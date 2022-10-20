@@ -1,15 +1,12 @@
 // ==UserScript==
 // @name        Melvor Idle Item Dashboard (MIID)
 // @namespace   http://tampermonkey.net
-// @match       https://melvoridle.com
-// @match       https://melvoridle.com/*
-// @match       https://www.melvoridle.com/*
-// @match       https://test.melvoridle.com/*
+// @match       https://melvoridle.com/index_game.php
 // @grant       none
 // @version     2.4
 // @author      Gardens#3738
 // @description Track -everything- over time!
-// @license GNU GPLv3 
+// @license GNU GPLv3
 // ==/UserScript==
 
 window.banked = function(itemID) {
@@ -21,55 +18,65 @@ window.banked = function(itemID) {
     return qty;
 }
 
+function EnsureItem(bulk, id){
+    if(!bulk[id]){
+        bulk[id] = 0;
+    }
+}
+
 window.itemsOwned = function(silent = true) {
-    let bulk = new Array(items.length).fill(0);
+    let bulk = {};
     // take everything in bank, pile it here
-    for (let bankSlot of bank) {
-        bulk[bankSlot.id] += bankSlot.qty;
+    for (let itemKey of game.bank.items.keys()) {
+        let bankSlot = game.bank.items.get(itemKey);
+        let itemID = bankSlot.item.id;
+        EnsureItem(bulk, itemID);
+        bulk[itemID] += bankSlot.quantity;
     }
 
     // check equipment sets, ignore golbin loadout
-    for (let equipmentSet of player.equipmentSets) {
-        let slotArray = equipmentSet.slotArray;
+    for (let equipmentSet of game.combat.player.equipmentSets) {
+        let slotArray = equipmentSet.equipment.slotArray;
         for (let slot of slotArray) {
             let gearID = slot.item.id;
+            EnsureItem(bulk, gearID);
             let qty = slot.quantity;
             // malcs, nobody uses logs in battle
             // malcs please just use -1 for no item
             if (gearID !== -1) {
                 bulk[gearID] += qty;
-                !silent && console.log(`gear item:${items[gearID].name} qty ${qty}`)
+                !silent && console.log(`gear item:${slot.item.name} qty ${qty}`)
             }
         }
     }
     // tally food, ignore golbin food at equippedFood[3]
-    for (let foodSlot of player.food.slots) {
+    for (let foodSlot of game.combat.player.food.slots) {
         let foodID = foodSlot.item.id;
+        EnsureItem(bulk, foodID);
         let qty = foodSlot.quantity;
         if (qty > 0) {
-            !silent && console.log(`food item:${items[foodID].name} qty ${qty}`);
+            !silent && console.log(`food item:${foodSlot.item.name} qty ${qty}`);
             bulk[foodID] += qty;
         }
     }
 
     if (!silent) {
-        for (let i = 0; i < bulk.length - 1; i++) {
-            if (bulk[i] > 0) {
-                console.log(`has item:${items[i].name} qty ${bulk[i]}`);
-            }
+        for (let itemId in bulk) {
+            let itemData = game.items.registeredObjects.get(itemId);
+            console.log(`has item:${itemData.name} qty ${bulk[itemId]}`);
         }
     }
     return bulk;
 }
 
 window.effHp = function() {
-    let foodObj = player.food.slots[player.food.selectedSlot];
+    let foodObj = game.combat.player.food.slots[game.combat.player.food.selectedSlot];
     // player.autoEatEfficiency
     // player.modifiers.increasedChanceToPreserveFood
     // return equippedFood.map(({ itemID, qty }) => (getFoodHealValue(itemID) || 0) * qty).reduce((a, b) => a + b)
-    let calcFoodQty = foodObj.quantity * (1 + player.modifiers.increasedChanceToPreserveFood);
-    let healValue = Math.floor(player.getFoodHealing(foodObj.item) * player.autoEatEfficiency / 100);
-    let hp = player.hitpoints;
+    let calcFoodQty = foodObj.quantity * (1 + game.combat.player.modifiers.increasedChanceToPreserveFood);
+    let healValue = Math.floor(game.combat.player.getFoodHealing(foodObj.item) * game.combat.player.autoEatEfficiency / 100);
+    let hp = game.combat.player.hitpoints;
     if (calcFoodQty == 0)
         return hp;
     else
@@ -85,8 +92,8 @@ window.totalKills = function() {
 }
 
 window.toggleIntervalSize = function() {
-    if (MIIDOptions.itemTracked != -1) {
-        MIIDOptions.itemTracked = -1;
+    if (MIIDOptions.itemTracked !== "") {
+        MIIDOptions.itemTracked = "";
         MIIDOptions.intervalTracked = 0;
     }
     MIIDOptions.intervalTracked = (MIIDOptions.intervalTracked + 1) % MIIDOptions.trackIntervals.length;
@@ -114,52 +121,54 @@ window.getTimeString = function(sec) {
 /////////////////////////////////////////////         XP            //////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-levelToXp = function(level) {
-    let xp = 0;
-    for (let l = 1; l <= level - 1; l++) {
-        xp += Math.floor(l + 300 * Math.pow(2, l / 7))
-    }
-    return Math.floor(xp / 4);
-}
+// levelToXp = function(level) {
+//     let xp = 0;
+//     for (let l = 1; l <= level - 1; l++) {
+//         xp += Math.floor(l + 300 * Math.pow(2, l / 7))
+//     }
+//     return Math.floor(xp / 4);
+// }
 
-levels = []
-for (let i = 0; i < 200; i++) {
-    levels[i] = levelToXp(i)
-}
+// levels = []
+// for (let i = 0; i < 200; i++) {
+//     levels[i] = levelToXp(i)
+// }
 
-xpToLevel = function(xp) {
-    let level = 1;
-    while (levels[level + 1] <= xp) level++;
-    return level;
-}
+// xpToLevel = function(xp) {
+//     let level = 1;
+//     while (levels[level + 1] <= xp) level++;
+//     return level;
+// }
 
 
-window.idToSkillname = {};
-// number to name
-for (let key of Object.keys(CONSTANTS.skill)) {
-    idToSkillname[CONSTANTS.skill[key]] = key
-}
-// console.log(idToSkillname)
+// window.idToSkillname = {};
+// // number to name
+// for (let key of Object.keys(CONSTANTS.skill)) {
+//     idToSkillname[CONSTANTS.skill[key]] = key
+// }
+// // console.log(idToSkillname)
 
-window.allXP = function(loud = false) {
-    let skills = [];
-    for (let i = 0; i < skillXP.length; i++) {
-        skills[i] = {
-            name: SKILLS[i].name,
-            xp: skillXP[i],
-            level: xpToLevel(skillXP[i]),
-        }
-        skills[i].xpToNext = levelToXp(skills[i].level + 1) - skillXP[i];
-        loud && console.log("skill", i, skills[i].name)
-        if (SKILLS[i].hasMastery) {
-            skills[i].pool = MASTERY[i].pool;
-            skills[i].mastery = MASTERY[i].xp.reduce((a, b) => a + b);
-            skills[i].poolMax = getMasteryPoolTotalXP(i);
-            skills[i].poolPerc = skills[i].pool / skills[i].poolMax * 100;
-        }
-    }
-    return skills;
-}
+// window.allXP = function(loud = false) {
+//     let skills = [];
+//     let allSkills = game.skills.allObjects;
+//     for (let i = 0; i < allSkills.length; i++) {
+//         let currentSkill = allSkills[i];
+//         skills[i] = {
+//             name: currentSkill.name,
+//             xp: currentSkill.xp,
+//             level: xpToLevel(currentSkill),
+//         }
+//         skills[i].xpToNext = levelToXp(skills[i].level + 1) - currentSkill;
+//         loud && console.log("skill", i, skills[i].name)
+//         if (currentSkill.hasMastery) {
+//             skills[i].pool = currentSkill.masteryPoolXP;
+//             skills[i].mastery = MASTERY[i].xp.reduce((a, b) => a + b);
+//             skills[i].poolMax = currentSkill.masteryPoolCap;
+//             skills[i].poolPerc = currentSkill.masteryPoolProgress;
+//         }
+//     }
+//     return skills;
+// }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////      SNAPSHOTS        //////////////////////////////////////
@@ -179,10 +188,10 @@ window.getSnapshot = function() {
     let resources = {
         date: (new Date()).getTime(),
         bulkItems: itemsOwned(),
-        skills: allXP(),
-        prayerPoints: player.prayerPoints,
-        slayerCoins: player.slayercoins,
-        gp: gp,
+        // skills: allXP(),
+        prayerPoints: game.combat.player.prayerPoints,
+        slayerCoins: game.slayerCoins.amount,
+        gp: game.gp.amount,
         hp: effHp(),
         kills: totalKills(),
     };
@@ -222,7 +231,7 @@ window.setupOptions = function() {
 
 window.resetOptions = function() {
     window.MIIDOptions = {
-        itemTracked: -1,
+        itemTracked: "",
         intervalTracked: 1,
         trackIntervals: [
             [0, 'reset'],
@@ -252,7 +261,7 @@ roundCustom = function(nr, roundDigits = 0, letters = true) {
     }
 }
 
-setItemTracked = function(itemID = -1) {
+setItemTracked = function(itemID = "") {
     MIIDOptions.itemTracked = itemID;
 }
 
@@ -271,10 +280,10 @@ trackerTick = function(silent = true) {
         timePassed,
         intervalDur: -1,
         intervalLabel: "default",
-        itemChange: new Array(items.length).fill(0),
-        worthChange: new Array(items.length).fill(0),
-        itemRate: new Array(items.length).fill(0),
-        worthRate: new Array(items.length).fill(0),
+        itemChange: {},
+        worthChange: {},
+        itemRate: {},
+        worthRate: {},
         itemRound: 2,
         goldRound: 0,
 
@@ -298,23 +307,23 @@ trackerTick = function(silent = true) {
         pointTimeLeft: {},
         pointChanges: false,
 
-        xpChange: new Array(skillXP.length).fill(0),
-        xpRate: new Array(skillXP.length).fill(0),
-        poolChange: new Array(skillXP.length).fill(0),
-        poolRate: new Array(skillXP.length).fill(0),
-        poolPercChange: new Array(skillXP.length).fill(0),
-        poolPercRate: new Array(skillXP.length).fill(0),
-        masteryChange: new Array(skillXP.length).fill(0),
-        masteryRate: new Array(skillXP.length).fill(0),
+        xpChange: new Array(game.skills.allObjects.length).fill(0),
+        xpRate: new Array(game.skills.allObjects.length).fill(0),
+        poolChange: new Array(game.skills.allObjects.length).fill(0),
+        poolRate: new Array(game.skills.allObjects.length).fill(0),
+        poolPercChange: new Array(game.skills.allObjects.length).fill(0),
+        poolPercRate: new Array(game.skills.allObjects.length).fill(0),
+        masteryChange: new Array(game.skills.allObjects.length).fill(0),
+        masteryRate: new Array(game.skills.allObjects.length).fill(0),
         skillChanges: false,
 
         lossChanges: false,
-        timeLeft: new Array(items.length).fill(0),
+        timeLeft: {},
     };
 
-    !silent && console.log(`xp change: ${resDiff.xpChange}, skillXP.length: ${skillXP.length}`)
+    // !silent && console.log(`xp change: ${resDiff.xpChange}, game.skills.allObjects.length: ${game.skills.allObjects.length}`)
     let rateFactor, intervalDur, intervalLabel;
-    if (MIIDOptions.itemTracked == -1) {
+    if (MIIDOptions.itemTracked == "") {
         // time-based tracking
         let interval = MIIDOptions.trackIntervals[MIIDOptions.intervalTracked];
         resDiff.intervalDur = interval[0];
@@ -339,13 +348,16 @@ trackerTick = function(silent = true) {
             rateFactor = itemTracker.curr.bulkItems[MIIDOptions.itemTracked] -
                 itemTracker.start.bulkItems[MIIDOptions.itemTracked]
 
-            resDiff.intervalLabel = items[MIIDOptions.itemTracked].name;
+            let itemData = game.items.registeredObjects.get(MIIDOptions.itemTracked);
+            resDiff.intervalLabel = itemData.name;
             !silent && console.log(`Tracking by ${MIIDOptions.itemTracked}`)
         }
     }
 
     // items
-    for (let itemID = 0; itemID < items.length; itemID++) {
+    for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
+        let itemData = game.items.allObjects[itemIndex];
+        let itemID = itemData.id;
         let startQty = start.bulkItems[itemID] || 0;
         let currQty = curr.bulkItems[itemID] || 0;
         let change = currQty - startQty;
@@ -356,14 +368,14 @@ trackerTick = function(silent = true) {
         resDiff.itemRate[itemID] = change / rateFactor;
 
         // register change
-        !silent && console.log(`${items[itemID].name} changed by ${resDiff.itemRate[itemID]} / ${resDiff.intervalLabel}`);
-        let worthChange = change * items[itemID].sellsFor;
+        !silent && console.log(`${itemData.name} changed by ${resDiff.itemRate[itemID]} / ${resDiff.intervalLabel}`);
+        let worthChange = change * itemData.sellsFor;
         resDiff.worthChange[itemID] = worthChange;
         resDiff.worthRate[itemID] = worthChange / rateFactor;
         // split by farming
         // I miss you horsie
         // Daisy, where are you now
-        if (items[itemID].category == "Farming") {
+        if (itemData.category == "Farming") {
             resDiff.farmingChanges = true;
             resDiff.farmingItemChange += change;
             resDiff.farmingWorthChange += worthChange;
@@ -376,7 +388,7 @@ trackerTick = function(silent = true) {
             resDiff.lossChanges = true;
             let timeLeft = currQty / (-change / timePassed);
             resDiff.timeLeft[itemID] = timeLeft;
-            !silent && console.log(`${items[itemID].name} running out in ${resDiff.timeLeft[itemID]}`);
+            !silent && console.log(`${itemData.name} running out in ${resDiff.timeLeft[itemID]}`);
         }
     }
     resDiff.generalItemRate = resDiff.generalItemChange / rateFactor;
@@ -409,19 +421,19 @@ trackerTick = function(silent = true) {
     }
 
     // XP
-    for (let skillID = 0; skillID < skillXP.length; skillID++) {
-        resDiff.xpChange[skillID] = itemTracker.curr.skills[skillID].xp - start.skills[skillID].xp;
-        resDiff.xpRate[skillID] = resDiff.xpChange[skillID] / rateFactor
+    //     for (let skillID = 0; skillID < game.skills.allObjects.length; skillID++) {
+    //         resDiff.xpChange[skillID] = itemTracker.curr.skills[skillID].xp - start.skills[skillID].xp;
+    //         resDiff.xpRate[skillID] = resDiff.xpChange[skillID] / rateFactor
 
-        resDiff.poolPercChange[skillID] = itemTracker.curr.skills[skillID].poolPerc - start.skills[skillID].poolPerc;
-        resDiff.poolPercRate[skillID] = resDiff.poolPercChange[skillID] / rateFactor;
+    //         resDiff.poolPercChange[skillID] = itemTracker.curr.skills[skillID].poolPerc - start.skills[skillID].poolPerc;
+    //         resDiff.poolPercRate[skillID] = resDiff.poolPercChange[skillID] / rateFactor;
 
-        resDiff.poolChange[skillID] = itemTracker.curr.skills[skillID].pool - start.skills[skillID].pool;
-        resDiff.poolRate[skillID] = resDiff.poolChange[skillID] / rateFactor;
+    //         resDiff.poolChange[skillID] = itemTracker.curr.skills[skillID].pool - start.skills[skillID].pool;
+    //         resDiff.poolRate[skillID] = resDiff.poolChange[skillID] / rateFactor;
 
-        resDiff.masteryChange[skillID] = itemTracker.curr.skills[skillID].mastery - start.skills[skillID].mastery;
-        resDiff.masteryRate[skillID] = resDiff.masteryChange[skillID] / rateFactor;
-    }
+    //         resDiff.masteryChange[skillID] = itemTracker.curr.skills[skillID].mastery - start.skills[skillID].mastery;
+    //         resDiff.masteryRate[skillID] = resDiff.masteryChange[skillID] / rateFactor;
+    //     }
 
     resDiff.rateFactor = rateFactor;
     // glove charges (todo)
@@ -463,13 +475,15 @@ window.getDashContent = function() {
     let content = ``;
 
     // each item row
-    for (let itemID = 0; itemID < items.length; itemID++) {
+    for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
+        let itemData = game.items.allObjects[itemIndex];
+        let itemID = itemData.id;
         if (MIIDOptions.blacklistItems[itemID] && !MIIDOptions.blacklistMode) continue;
         let change = resDiff.itemChange[itemID];
 
         // each item's change, put in the right content chunk
         // display if change is nonzero or blacklisted item in blacklist mode
-        if (change !== 0 || (MIIDOptions.blacklistItems[itemID] && MIIDOptions.blacklistMode)) {
+        if ((change !== undefined && change !== 0) || (MIIDOptions.blacklistItems[itemID] && MIIDOptions.blacklistMode)) {
             let itemRate = roundCustom(resDiff.itemRate[itemID], resDiff.itemRound);
             let worthRate = roundCustom(resDiff.worthRate[itemID], resDiff.goldRound);
             let banned = MIIDOptions.blacklistItems[itemID];
@@ -478,7 +492,7 @@ window.getDashContent = function() {
             if (compact) {
                 row = `
                 <div class="pointer-enabled" onClick="handleItemClick(${itemID})">
-                    <img width="32" height="32" src="${items[itemID].media}"></img>
+                    <img width="32" height="32" src="${itemData.media}"></img>
                     <span>
                         ${banned ? String(itemRate).strike():itemRate}
                     </span>
@@ -488,8 +502,8 @@ window.getDashContent = function() {
                 row = `
                 <div class="row">
                     <div class="col-4 pointer-enabled" onClick="handleItemClick(${itemID})">
-                        <img class="nav-img" src="${items[itemID].media}"></img>
-                        ${banned ? items[itemID].name.strike() : items[itemID].name}
+                        <img class="nav-img" src="${itemData.media}"></img>
+                        ${banned ? itemData.name.strike() : itemData.name}
                     </div>
                     <div class="col-4">${banned ? String(itemRate).strike():itemRate}</div>
                     <div class="col-4">
@@ -498,7 +512,7 @@ window.getDashContent = function() {
                     </div>
                 </div>`;
             }
-            if (items[itemID].category == "Farming") {
+            if (itemData.category == "Farming") {
                 farmingContent += row;
             } else {
                 generalContent += row;
@@ -511,7 +525,7 @@ window.getDashContent = function() {
                 if (compact) {
                     lossRow = `
                     <div class="pointer-enabled" onClick="handleItemClick(${itemID})">
-                        <img width="32" height="32" src="${items[itemID].media}"></img>
+                        <img width="32" height="32" src="${itemData.media}"></img>
                         <span>
                             ${timeString} left
                         </span>
@@ -521,7 +535,7 @@ window.getDashContent = function() {
                     lossRow = `
                     <div class="row pointer-enabled" onClick="handleItemClick(${itemID})">
                         <div class="col-6">
-                            <img class="nav-img" src="${items[itemID].media}"></img>
+                            <img class="nav-img" src="${itemData.media}"></img>
                             ${roundCustom(itemTracker.curr.bulkItems[itemID], 1)}
                         </div>
                         <div class="col-6">${timeString} left</div>
@@ -656,62 +670,62 @@ window.getDashContent = function() {
         <h5 class = "font-w700 text-center text-combat-smoke col"> Time to Lvl </h5>
     </div>`
 
-    for (let skillID = 0; skillID < skillXP.length; skillID++) {
-        let xpRow = ``;
-        let skillName = SKILLS[skillID].name;
-        let hasMastery = SKILLS[skillID].hasMastery;
-        let xpRate = resDiff.xpRate[skillID];
-        let xpChange = resDiff.xpChange[skillID];
-        let poolPercRate = resDiff.poolPercRate[skillID]
-        let masteryRate = resDiff.masteryRate[skillID]
-        let xpToNext = itemTracker.curr.skills[skillID].xpToNext;
-        let timeToLevel = xpToNext / (xpChange / resDiff.timePassed);
-        let until100 = (itemTracker.curr.skills[skillID].poolMax / (resDiff.poolChange[skillID] - resDiff.timePassed)) * 100;
+//     for (let skillID = 0; skillID < game.skills.allObjects.length; skillID++) {
+//         let xpRow = ``;
+//         let skillName = SKILLS[skillID].name;
+//         let hasMastery = SKILLS[skillID].hasMastery;
+//         let xpRate = resDiff.xpRate[skillID];
+//         let xpChange = resDiff.xpChange[skillID];
+//         let poolPercRate = resDiff.poolPercRate[skillID]
+//         let masteryRate = resDiff.masteryRate[skillID]
+//         let xpToNext = itemTracker.curr.skills[skillID].xpToNext;
+//         let timeToLevel = xpToNext / (xpChange / resDiff.timePassed);
+//         let until100 = (itemTracker.curr.skills[skillID].poolMax / (resDiff.poolChange[skillID] - resDiff.timePassed)) * 100;
 
-        if (xpChange == 0) {
-            continue;
-        } else {
-            resDiff.skillChanges = true;
-        }
-        if (compact) {
-            // TODO: mobile version
-        } else {
-            xpRow = `
-                <div class="row">
-                    <div class="col-4">
-                        <img class="nav-img" src="${SKILLS[skillID].media}"></img>
-                        ${skillName}
-                    </div>
-                    <div class="col-4">
-                        ${roundCustom(xpRate, 2)}
-                    </div>
-                    <div class="col-4">
-                        ${getTimeString(timeToLevel)}
-                    </div>
-                    
-                </div>`
-            if (hasMastery && itemTracker.curr.skills[skillID].poolPerc < 100) {
-                xpRow += `
-                    <div class="row">
-                    <div class="col-4">
-                    <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
-                    ${skillName}
-                    </div>
-                    <div class="col-4">
-                    ${roundCustom(poolPercRate, 2)}%
-                    </div>
-                    <div class="col-4">
-                    to 100%: ${getTimeString(until100)}
-                    </div>
-                    
-                    </div>`
-            }
-        }
-        xpContent += xpRow
-    }
-    if (resDiff.skillChanges) {
-        content += xpContent;
-    }
+//         if (xpChange == 0) {
+//             continue;
+//         } else {
+//             resDiff.skillChanges = true;
+//         }
+//         if (compact) {
+//             // TODO: mobile version
+//         } else {
+//             xpRow = `
+//                 <div class="row">
+//                     <div class="col-4">
+//                         <img class="nav-img" src="${SKILLS[skillID].media}"></img>
+//                         ${skillName}
+//                     </div>
+//                     <div class="col-4">
+//                         ${roundCustom(xpRate, 2)}
+//                     </div>
+//                     <div class="col-4">
+//                         ${getTimeString(timeToLevel)}
+//                     </div>
+
+//                 </div>`
+//             if (hasMastery && itemTracker.curr.skills[skillID].poolPerc < 100) {
+//                 xpRow += `
+//                     <div class="row">
+//                     <div class="col-4">
+//                     <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
+//                     ${skillName}
+//                     </div>
+//                     <div class="col-4">
+//                     ${roundCustom(poolPercRate, 2)}%
+//                     </div>
+//                     <div class="col-4">
+//                     to 100%: ${getTimeString(until100)}
+//                     </div>
+
+//                     </div>`
+//             }
+//         }
+//         xpContent += xpRow
+//     }
+//     if (resDiff.skillChanges) {
+//         content += xpContent;
+//     }
 
     return content;
 }
@@ -821,11 +835,11 @@ function injectItemTrackerButton() {
         <small id="dashWealthChange" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom" title="" data-original-title="TEST"></small>
         </div>
         </li>`
-        $("#nav-menu-show").before(dashButton);
+        $(".nav-main .bank-space-nav").parent().parent().after(dashButton);
         setupOptions();
         setupItemTracker();
         window.itemTrackBot = setInterval(() => {
-            trackerTick();
+            trackerTick(false);
             updateDash();
             // HACK for initial ticker:
             // $("#dashItems").html(getDashItemRows())
@@ -837,9 +851,8 @@ function loadItemDashboard() {
     // if ((window.isLoaded && !window.currentlyCatchingUp) ||
     //     (typeof unsafeWindow !== 'undefined' && unsafeWindow.isLoaded && !unsafeWindow.currentlyCatchingUp) ||
     //     document.getElementById("nav-menu-show") == null ||
-    if (!window.isLoaded || window.currentlyCatchingUp ||
-        document.getElementById("nav-menu-show") == null
-        // equipmentSets[1] == undefined
+    if (
+        !(confirmedLoaded && characterSelected)
     ) {
         // console.log("Retrying...")
         setTimeout(loadItemDashboard, 300);
