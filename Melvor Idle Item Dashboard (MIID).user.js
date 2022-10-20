@@ -1,14 +1,3 @@
-// ==UserScript==
-// @name        Melvor Idle Item Dashboard (MIID)
-// @namespace   http://tampermonkey.net
-// @match       https://melvoridle.com/index_game.php
-// @grant       none
-// @version     2.4
-// @author      Gardens#3738
-// @description Track -everything- over time!
-// @license GNU GPLv3
-// ==/UserScript==
-
 window.banked = function(itemID) {
     let qty = 0;
     if (checkBankForItem(itemID)) {
@@ -271,8 +260,8 @@ trackerTick = function(silent = true) {
     let { start, curr } = itemTracker;
     let timePassed = (curr.date - start.date) / 1000;
     // save tracker
-    localStorage.setItem("itemTracker-" + window.username, JSON.stringify(itemTracker));
-    localStorage.setItem("MIIDOptions-" + window.username, JSON.stringify(MIIDOptions));
+    localStorage.setItem("itemTracker-" + currentCharacter, JSON.stringify(itemTracker));
+    localStorage.setItem("MIIDOptions-" + currentCharacter, JSON.stringify(MIIDOptions));
     // why did I do this?
     // itemTracker = JSON.parse(localStorage.getItem("itemTracker"));
 
@@ -832,14 +821,14 @@ function injectItemTrackerButton() {
         <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/statistics_header.svg">
         <span class="nav-main-link-name">Item Dash</span>
         <img src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg" style="margin-right: 4px;" width="16px" height="16px">
-        <small id="dashWealthChange" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom" title="" data-original-title="TEST"></small>
+        <small id="dashWealthChange" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom"></small>
         </div>
         </li>`
         $(".nav-main .bank-space-nav").parent().parent().after(dashButton);
         setupOptions();
         setupItemTracker();
         window.itemTrackBot = setInterval(() => {
-            trackerTick(false);
+            trackerTick();
             updateDash();
             // HACK for initial ticker:
             // $("#dashItems").html(getDashItemRows())
