@@ -1,5 +1,3 @@
-// TODO: Can I reduce the number of times I loop through all items/skills?
-
 declare interface Window {
   dashboard: ItemDashboard;
 }
@@ -33,21 +31,7 @@ class Options {
     let localCopy = localStorage.getItem(this.OptionsStorageKey());
     if (localCopy !== null) {
       const savedOptions = JSON.parse(localCopy) as Options;
-      if (savedOptions.BlacklistItems) {
-        this.BlacklistItems = savedOptions.BlacklistItems;
-      }
-      if (savedOptions.BlacklistMode) {
-        this.BlacklistMode = savedOptions.BlacklistMode;
-      }
-      if (savedOptions.IntervalTracked) {
-        this.IntervalTracked = savedOptions.IntervalTracked;
-      }
-      if (savedOptions.ItemTracked) {
-        this.ItemTracked = savedOptions.ItemTracked;
-      }
-      if (savedOptions.PointTracked) {
-        this.PointTracked = savedOptions.PointTracked;
-      }
+      Object.assign(this, savedOptions);
     }
   }
 
@@ -110,11 +94,7 @@ class Snapshot implements SnapshotOptions {
   }
 
   TotalKills() {
-    let kills = 0;
-    for (let monster of game.monsters.allObjects) {
-      kills += game.stats.monsterKillCount(monster) || 0;
-    }
-    return kills;
+    return game.monsters.reduce((previous, current) => previous + game.stats.monsterKillCount(current), 0);
   }
 
   OwnedItems(silent = true) {
@@ -175,22 +155,20 @@ class Snapshot implements SnapshotOptions {
 
   allXP(silent = true) {
     let skills: { [name: string]: SkillDiff } = {};
-    let allSkills = game.skills.allObjects;
-    for (let i = 0; i < allSkills.length; i++) {
-      let currentSkill = allSkills[i];
+    game.skills.forEach((skill) => {
       let skillDiff: SkillDiff = {
-        Name: currentSkill.name,
-        Xp: currentSkill.xp,
-        Level: currentSkill.level,
+        Name: skill.name,
+        Xp: skill.xp,
+        Level: skill.level,
         Pool: 0,
         Mastery: 0,
         PoolMax: 0,
         PoolPercent: 0,
-        XpToNext: this.dashboard.LevelToXp(currentSkill.virtualLevel + 1) - currentSkill.xp
+        XpToNext: this.dashboard.LevelToXp(skill.virtualLevel + 1) - skill.xp
       };
-      !silent && console.log("skill", i, currentSkill.name)
-      if (currentSkill.hasMastery) {
-        let masterySkill = game.masterySkills.getObjectByID(currentSkill.id);
+      !silent && console.log("skill: " + skill.name)
+      if (skill.hasMastery) {
+        let masterySkill = game.masterySkills.getObjectByID(skill.id);
         if (masterySkill) {
           skillDiff.Pool = masterySkill.masteryPoolXP;
           skillDiff.Mastery = masterySkill.totalMasteryXP;
@@ -198,8 +176,8 @@ class Snapshot implements SnapshotOptions {
           skillDiff.PoolPercent = masterySkill.masteryPoolXP / masterySkill.masteryPoolCap;
         }
       }
-      skills[currentSkill.id] = skillDiff;
-    }
+      skills[skill.id] = skillDiff;
+    });
     return skills;
   }
 }
@@ -373,30 +351,10 @@ class ItemDashboard {
     if (localCopy == null) {
       this.ResetItemTracker();
     } else {
-      let savedTracker = JSON.parse(localCopy);
-      if (savedTracker && savedTracker.start) {
-        let savedStart = savedTracker.start as Snapshot;
-        if (savedStart.BulkItems) {
-          this.itemTracker.curr.BulkItems = savedStart.BulkItems;
-        }
-        if (savedStart.Date) {
-          this.itemTracker.curr.Date = savedStart.Date;
-        }
-        if (savedStart.Gold) {
-          this.itemTracker.curr.Gold = savedStart.Gold;
-        }
-        if (savedStart.Health) {
-          this.itemTracker.curr.Health = savedStart.Health;
-        }
-        if (savedStart.Kills) {
-          this.itemTracker.curr.Kills = savedStart.Kills;
-        }
-        if (savedStart.PrayerPoints) {
-          this.itemTracker.curr.PrayerPoints = savedStart.PrayerPoints;
-        }
-        if (savedStart.SlayerCoins) {
-          this.itemTracker.curr.SlayerCoins = savedStart.SlayerCoins;
-        }
+      let savedSnapshot = JSON.parse(localCopy);
+      if (savedSnapshot && savedSnapshot.Date) {
+        let savedStart = savedSnapshot as Snapshot;
+        Object.assign(this.itemTracker.start, savedStart);
       }
     }
   }
@@ -441,7 +399,7 @@ class ItemDashboard {
     this.SaveItemTracker();
     this.options.SaveOptions();
 
-    !silent && console.log(`xp change: ${this.resDiff.XpChange}, game.skills.allObjects.length: ${game.skills.allObjects.length}`)
+    !silent && console.log(`xp change: ${this.resDiff.XpChange}`)
     let rateFactor = 1;
     const itemTracked = this.options.ItemTracked;
     if (itemTracked == "") {
@@ -478,16 +436,23 @@ class ItemDashboard {
     }
 
     // items
-    for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
-      let itemData = game.items.allObjects[itemIndex];
-      let itemID = itemData.id;
-      if (this.options.BlacklistItems[itemID] && !this.options.BlacklistMode) {
-        continue;
+    let trackedItemIDs = new Set<string>();
+    for (let itemID in start.BulkItems) {
+      trackedItemIDs.add(itemID);
+    }
+    for (let itemID in curr.BulkItems) {
+      trackedItemIDs.add(itemID);
+    }
+
+    trackedItemIDs.forEach((itemID) => {
+      let itemData = game.items.getObjectByID(itemID);
+      if (!itemData || (this.options.BlacklistItems[itemID] && !this.options.BlacklistMode)) {
+        return;
       }
       let startQty = start.BulkItems[itemID] || 0;
       let currQty = curr.BulkItems[itemID] || 0;
       let change = currQty - startQty;
-      if (change == 0) continue;
+      if (change == 0) return;
 
       // absolute change, interval rate, time left
       this.resDiff.ItemChange[itemID] = change;
@@ -514,7 +479,8 @@ class ItemDashboard {
         this.resDiff.TimeLeft[itemID] = timeLeft;
         !silent && console.log(`${itemData.name} running out in ${this.resDiff.TimeLeft[itemID]}`);
       }
-    }
+    });
+
     this.resDiff.GeneralItemRate = this.resDiff.GeneralItemChange / rateFactor;
     this.resDiff.GeneralWorthRate = this.resDiff.GeneralWorthChange / rateFactor;
 
@@ -545,9 +511,7 @@ class ItemDashboard {
     }
 
     // XP
-    for (let skillIndex = 0; skillIndex < game.skills.allObjects.length; skillIndex++) {
-      let skill = game.skills.allObjects[skillIndex];
-      let skillID = skill.id;
+    for (let skillID in this.itemTracker.curr.Skills) {
       this.resDiff.XpChange[skillID] = this.itemTracker.curr.Skills[skillID].Xp - start.Skills[skillID].Xp;
       this.resDiff.XpRate[skillID] = this.resDiff.XpChange[skillID] / rateFactor
 
@@ -592,10 +556,11 @@ class ItemDashboard {
     let content = ``;
 
     // each item row
-    for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
-      let itemData = game.items.allObjects[itemIndex];
-      let itemID = itemData.id;
-      if (this.options.BlacklistItems[itemID] && !this.options.BlacklistMode) continue;
+    for (let itemID in this.resDiff.ItemChange) {
+      let itemData = game.items.getObjectByID(itemID);
+      if (!itemData || (this.options.BlacklistItems[itemID] && !this.options.BlacklistMode)) {
+        continue;
+      }
       let change = this.resDiff.ItemChange[itemID];
 
       // each item's change, put in the right content chunk
@@ -787,22 +752,25 @@ class ItemDashboard {
         <h5 class = "font-w700 text-center text-combat-smoke col"> Time to Lvl </h5>
     </div>`
 
-    for (let skillIndex = 0; skillIndex < game.skills.allObjects.length; skillIndex++) {
-      let skill = game.skills.allObjects[skillIndex];
-      let skillID = skill.id;
+    for (let skillID in this.itemTracker.curr.Skills) {
+      let skillData = game.skills.getObjectByID(skillID);
+      if (!skillData) {
+        continue;
+      }
+      let currentSkill = this.itemTracker.curr.Skills[skillID];
       let xpRow = ``;
-      let skillName = skill.name;
-      let hasMastery = skill.hasMastery;
+      let skillName = skillData.name;
+      let hasMastery = skillData.hasMastery;
       let xpRate = this.resDiff.XpRate[skillID];
       let xpChange = this.resDiff.XpChange[skillID];
       let poolPercRate = this.resDiff.PoolPercRate[skillID]
       let masteryRate = this.resDiff.MasteryRate[skillID]
-      let xpToNext = this.itemTracker.curr.Skills[skillID].XpToNext;
+      let xpToNext = currentSkill.XpToNext;
       let timeToLevel = xpToNext / (xpChange / this.resDiff.TimePassed);
       let poolChange = this.resDiff.PoolChange[skillID];
       let until100 = 0;
       if (poolChange) {
-        until100 = (this.itemTracker.curr.Skills[skillID].PoolMax / (poolChange - this.resDiff.TimePassed)) * 100;
+        until100 = ((currentSkill.PoolMax - currentSkill.Pool) / (poolChange / this.resDiff.TimePassed));
       }
 
       if (xpChange == 0) {
@@ -813,10 +781,11 @@ class ItemDashboard {
       if (compact) {
         // TODO: mobile version
       } else {
-        xpRow = `
+        if (skillData.virtualLevel < skillData.levelCap) {
+          xpRow = `
                 <div class="row">
                     <div class="col-4">
-                        <img class="nav-img" src="${skill.media}"></img>
+                        <img class="nav-img" src="${skillData.media}"></img>
                         ${skillName}
                     </div>
                     <div class="col-4">
@@ -826,7 +795,8 @@ class ItemDashboard {
                         ${this.GetTimeString(timeToLevel)}
                     </div>
 
-                </div>`
+                </div>`;
+        }
         if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100) {
           xpRow += `
                     <div class="row">
@@ -835,16 +805,16 @@ class ItemDashboard {
                     ${skillName}
                     </div>
                     <div class="col-4">
-                    ${this.RoundCustom(poolPercRate, 2)}%
+                    ${this.RoundCustom(poolPercRate, 3)}%
                     </div>
                     <div class="col-4">
                     to 100%: ${this.GetTimeString(until100)}
                     </div>
 
-                    </div>`
+                    </div>`;
         }
       }
-      xpContent += xpRow
+      xpContent += xpRow;
     }
     if (this.resDiff.SkillChanges) {
       content += xpContent;
@@ -931,7 +901,7 @@ class ItemDashboard {
     var dashboard = this;
     Swal.fire({
       title: 'M.I.I.D. (Item Dash)',
-      html: `<small>by Gardens</small><div id="dashContent"></div>`,
+      html: `<div><small>Created by Gardens</small></div><div><small>Updated by MyPickle</small></div><div id="dashContent"></div>`,
       width: "50%",
       // openItemDash();
       confirmButtonColor: '#3085d6',
