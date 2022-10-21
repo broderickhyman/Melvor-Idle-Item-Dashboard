@@ -37,7 +37,15 @@ class Options {
   }
 
   private LoadOptions() {
-    return localStorage.getItem("MIIDOptions-" + currentCharacter);
+    return localStorage.getItem(this.OptionsStorageKey());
+  }
+
+  public SaveOptions() {
+    localStorage.setItem(this.OptionsStorageKey(), JSON.stringify(this));
+  }
+
+  private OptionsStorageKey() {
+    return "MIIDOptions-" + currentCharacter;
   }
 }
 
@@ -60,126 +68,38 @@ class Snapshot implements SnapshotOptions {
   public kills: number;
 
   constructor() {
-    this.date = 0;
-    this.bulkItems = {};
-    this.prayerPoints = 0;
-    this.slayerCoins = 0;
-    this.gp = 0;
-    this.hp = 0;
-    this.kills = 0;
+    this.date = (new Date()).getTime();
+    this.bulkItems = this.itemsOwned();
+    // this.skills= this.allXP();
+    this.prayerPoints = game.combat.player.prayerPoints;
+    this.slayerCoins = game.slayerCoins.amount;
+    this.gp = game.gp.amount;
+    this.hp = this.effHp();
+    this.kills = this.totalKills();
   }
 
-  //getProperty<K extends keyof Snapshot>(key: K) {
-  //  return this[key]; // Inferred type is T[K]
-  //}
-  //setProperty<K extends keyof Snapshot>(key: K, value: Snapshot[K]) {
-  //  this[key] = value;
-  //}
-}
+  effHp() {
+    let foodObj = game.combat.player.food.currentSlot;
+    let calcFoodQty = foodObj.quantity * (1 + game.combat.player.modifiers.increasedChanceToPreserveFood);
+    let healValue = Math.floor(game.combat.player.getFoodHealing(foodObj.item) * this.AutoEatEfficiency() / 100);
+    let hp = game.combat.player.hitpoints;
+    if (calcFoodQty == 0)
+      return hp;
+    else
+      return hp + calcFoodQty * healValue;
+  }
 
-type SnapshotKeys = keyof SnapshotOptions;
+  AutoEatEfficiency() {
+    const percent = game.combat.player.modifiers.increasedAutoEatEfficiency - game.combat.player.modifiers.decreasedAutoEatEfficiency;
+    return Math.max(percent, 1);
+  }
 
-class ItemDashboard {
-  public options: Options;
-  itemTracker: {
-    start: Snapshot;
-    curr: Snapshot;
-  };
-  resDiff: {
-    rateFactor: number;
-    netWealthRate: number;
-    netWealthChange: number;
-    timePassed: number;
-    intervalDur: number;
-    intervalLabel: string;
-    itemChange: { [name: string]: number };
-    worthChange: { [name: string]: number };
-    itemRate: { [name: string]: number };
-    worthRate: { [name: string]: number };
-    itemRound: number;
-    goldRound: number;
-    generalItemRate: number;
-    generalItemChange: number;
-    generalWorthChange: number;
-    generalWorthRate: number;
-    generalChanges: boolean;
-    farmingItemRate: number;
-    farmingItemChange: number;
-    farmingWorthChange: number;
-    farmingWorthRate: number;
-    farmingChanges: boolean;
-    totalWorthChange: number;
-    totalWorthRate: number;
-    pointChange: { [name: string]: number };
-    pointRate: { [name: string]: number };
-    pointTimeLeft: { [name: string]: number };
-    pointChanges: boolean;
-    xpChange: any[];
-    xpRate: any[];
-    poolChange: any[];
-    poolRate: any[];
-    poolPercChange: any[];
-    poolPercRate: any[];
-    masteryChange: any[];
-    masteryRate: any[];
-    skillChanges: boolean;
-    lossChanges: boolean;
-    timeLeft: { [name: string]: number };
-  };
-
-  constructor() {
-    this.options = new Options();
-    this.itemTracker = {
-      start: this.getSnapshot(),
-      curr: this.getSnapshot(),
-    };
-    this.resDiff = {
-      rateFactor: 0,
-      netWealthRate: 0,
-      netWealthChange: 0,
-      timePassed: 0,
-      intervalDur: -1,
-      intervalLabel: "default",
-      itemChange: {},
-      worthChange: {},
-      itemRate: {},
-      worthRate: {},
-      itemRound: 2,
-      goldRound: 0,
-
-      generalItemRate: 0,
-      generalItemChange: 0,
-      generalWorthChange: 0,
-      generalWorthRate: 0,
-      generalChanges: false,
-
-      farmingItemRate: 0,
-      farmingItemChange: 0,
-      farmingWorthChange: 0,
-      farmingWorthRate: 0,
-      farmingChanges: false,
-
-      totalWorthChange: 0,
-      totalWorthRate: 0,
-
-      pointChange: {},
-      pointRate: {},
-      pointTimeLeft: {},
-      pointChanges: false,
-
-      xpChange: new Array(game.skills.allObjects.length).fill(0),
-      xpRate: new Array(game.skills.allObjects.length).fill(0),
-      poolChange: new Array(game.skills.allObjects.length).fill(0),
-      poolRate: new Array(game.skills.allObjects.length).fill(0),
-      poolPercChange: new Array(game.skills.allObjects.length).fill(0),
-      poolPercRate: new Array(game.skills.allObjects.length).fill(0),
-      masteryChange: new Array(game.skills.allObjects.length).fill(0),
-      masteryRate: new Array(game.skills.allObjects.length).fill(0),
-      skillChanges: false,
-
-      lossChanges: false,
-      timeLeft: {},
-    };
+  totalKills() {
+    let kills = 0;
+    for (let monster of game.monsters.allObjects) {
+      kills += game.stats.monsterKillCount(monster) || 0;
+    }
+    return kills;
   }
 
   itemsOwned(silent = true) {
@@ -234,53 +154,6 @@ class ItemDashboard {
     return bulk;
   }
 
-  AutoEatEfficiency() {
-    const percent = game.combat.player.modifiers.increasedAutoEatEfficiency - game.combat.player.modifiers.decreasedAutoEatEfficiency;
-    return Math.max(percent, 1);
-  }
-
-  effHp() {
-    let foodObj = game.combat.player.food.currentSlot;
-    let calcFoodQty = foodObj.quantity * (1 + game.combat.player.modifiers.increasedChanceToPreserveFood);
-    let healValue = Math.floor(game.combat.player.getFoodHealing(foodObj.item) * this.AutoEatEfficiency() / 100);
-    let hp = game.combat.player.hitpoints;
-    if (calcFoodQty == 0)
-      return hp;
-    else
-      return hp + calcFoodQty * healValue;
-  }
-
-  totalKills() {
-    let kills = 0;
-    for (let monster of game.monsters.allObjects) {
-      kills += game.stats.monsterKillCount(monster) || 0;
-    }
-    return kills;
-  }
-
-  toggleIntervalSize() {
-    if (this.options.itemTracked !== "") {
-      this.options.itemTracked = "";
-      this.options.intervalTracked = 0;
-    }
-    this.options.intervalTracked = (this.options.intervalTracked + 1) % this.options.trackIntervals.length;
-  }
-
-  getTimeString(sec: number) {
-    let s = Math.round(sec)
-    let h = Math.floor(s / 3600)
-    let m = Math.floor((s - h * 3600) / 60)
-    s = s - 3600 * h - 60 * m;
-    // if (h == 0) {
-    //     if (m == 0) {
-    //         return `${s}s`;
-    //     } else return `${m}m${s}s`;
-    // } else return `${h}h${m}m${s}s`;
-    // let timeString = ` h: ${h} m: ${m} s: ${s}`;
-    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  }
-
-
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////         XP            //////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -333,53 +206,162 @@ class ItemDashboard {
   //     }
   //     return skills;
   // }
+}
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////////////////////////      SNAPSHOTS        //////////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////
+type SnapshotKeys = keyof SnapshotOptions;
 
-  // let itemTracker = {
-  //     start: {
-  //         bulkItems: [
-  //             0: 34,
-  //             1: 356
-  //         ],
-  //         gp: 2444,
-  //         prayerPoints: 54243,
-  //     },
-  //     curr: {... }
-  getSnapshot() {
-    let resources = {
-      date: (new Date()).getTime(),
-      bulkItems: this.itemsOwned(),
-      // skills: allXP(),
-      prayerPoints: game.combat.player.prayerPoints,
-      slayerCoins: game.slayerCoins.amount,
-      gp: game.gp.amount,
-      hp: this.effHp(),
-      kills: this.totalKills(),
+class ResultDiff {
+  public rateFactor: number;
+  public netWealthRate: number;
+  public netWealthChange: number;
+  public timePassed: number;
+  public intervalDur: number;
+  public intervalLabel: string;
+  public itemChange: { [name: string]: number };
+  public worthChange: { [name: string]: number };
+  public itemRate: { [name: string]: number };
+  public worthRate: { [name: string]: number };
+  public itemRound: number;
+  public goldRound: number;
+  public generalItemRate: number;
+  public generalItemChange: number;
+  public generalWorthChange: number;
+  public generalWorthRate: number;
+  public generalChanges: boolean;
+  public farmingItemRate: number;
+  public farmingItemChange: number;
+  public farmingWorthChange: number;
+  public farmingWorthRate: number;
+  public farmingChanges: boolean;
+  public totalWorthChange: number;
+  public totalWorthRate: number;
+  public pointChange: { [name: string]: number };
+  public pointRate: { [name: string]: number };
+  public pointTimeLeft: { [name: string]: number };
+  public pointChanges: boolean;
+  public xpChange: any[];
+  public xpRate: any[];
+  public poolChange: any[];
+  public poolRate: any[];
+  public poolPercChange: any[];
+  public poolPercRate: any[];
+  public masteryChange: any[];
+  public masteryRate: any[];
+  public skillChanges: boolean;
+  public lossChanges: boolean;
+  public timeLeft: { [name: string]: number };
+
+  constructor() {
+    this.rateFactor= 0;
+    this.netWealthRate= 0;
+    this.netWealthChange= 0;
+    this.timePassed= 0;
+    this.intervalDur= -1;
+    this.intervalLabel= "default";
+    this.itemChange= {};
+    this.worthChange= {};
+    this.itemRate= {};
+    this.worthRate= {};
+    this.itemRound= 2;
+    this.goldRound= 0;
+    this.generalItemRate= 0;
+    this.generalItemChange= 0;
+    this.generalWorthChange= 0;
+    this.generalWorthRate= 0;
+    this.generalChanges= false;
+    this.farmingItemRate= 0;
+    this.farmingItemChange= 0;
+    this.farmingWorthChange= 0;
+    this.farmingWorthRate= 0;
+    this.farmingChanges= false;
+    this.totalWorthChange= 0;
+    this.totalWorthRate= 0;
+    this.pointChange= {};
+    this.pointRate= {};
+    this.pointTimeLeft= {};
+    this.pointChanges= false;
+    this.xpChange= new Array(game.skills.allObjects.length).fill(0);
+    this.xpRate= new Array(game.skills.allObjects.length).fill(0);
+    this.poolChange= new Array(game.skills.allObjects.length).fill(0);
+    this.poolRate= new Array(game.skills.allObjects.length).fill(0);
+    this.poolPercChange= new Array(game.skills.allObjects.length).fill(0);
+    this.poolPercRate= new Array(game.skills.allObjects.length).fill(0);
+    this.masteryChange= new Array(game.skills.allObjects.length).fill(0);
+    this.masteryRate= new Array(game.skills.allObjects.length).fill(0);
+    this.skillChanges= false;
+    this.lossChanges= false;
+    this.timeLeft= {};
+  }
+}
+
+class ItemDashboard {
+  public options: Options;
+  itemTracker: {
+    start: Snapshot;
+    curr: Snapshot;
+  };
+  resDiff: ResultDiff;
+
+  constructor() {
+    this.options = new Options();
+    this.itemTracker = {
+      start: new Snapshot(),
+      curr: new Snapshot(),
     };
-    return resources;
+    this.resDiff = new ResultDiff();
+  }
+
+  resetResDiff() {
+    this.resDiff = new ResultDiff();
+  }
+
+  toggleIntervalSize() {
+    if (this.options.itemTracked !== "") {
+      this.options.itemTracked = "";
+      this.options.intervalTracked = 0;
+    }
+    this.options.intervalTracked = (this.options.intervalTracked + 1) % this.options.trackIntervals.length;
+  }
+
+  getTimeString(sec: number) {
+    let s = Math.round(sec)
+    let h = Math.floor(s / 3600)
+    let m = Math.floor((s - h * 3600) / 60)
+    s = s - 3600 * h - 60 * m;
+    // if (h == 0) {
+    //     if (m == 0) {
+    //         return `${s}s`;
+    //     } else return `${m}m${s}s`;
+    // } else return `${h}h${m}m${s}s`;
+    // let timeString = ` h: ${h} m: ${m} s: ${s}`;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
 
   resetItemTracker() {
-    this.itemTracker = {
-      start: this.getSnapshot(),
-      curr: this.getSnapshot(),
-    }
+    this.itemTracker.start = new Snapshot();
+    this.itemTracker.curr = new Snapshot();
     this.trackerTick();
   }
 
-
-  // resetItemTracker();
-
   setupItemTracker() {
-    let localCopy = localStorage.getItem("itemTracker-" + currentCharacter)
+    let localCopy = this.loadItemTracker();
     if (localCopy == null) {
       this.resetItemTracker();
     } else {
       this.itemTracker = JSON.parse(localCopy);
     }
+  }
+
+  loadItemTracker() {
+    return localStorage.getItem(this.itemTrackerStorageKey());
+  }
+
+  saveItemTracker() {
+    localStorage.setItem(this.itemTrackerStorageKey(), JSON.stringify(this.itemTracker));
+  }
+
+  itemTrackerStorageKey() {
+    return "itemTracker-" + currentCharacter;
   }
 
   roundCustom(nr: number, roundDigits = 0, letters = true) {
@@ -401,14 +383,13 @@ class ItemDashboard {
   }
 
   trackerTick(silent = true) {
-    this.itemTracker.curr = this.getSnapshot();
+    this.itemTracker.curr = new Snapshot();
     let { start, curr } = this.itemTracker;
-    let timePassed = (curr.date - start.date) / 1000;
+    this.resetResDiff();
+    this.resDiff.timePassed = (curr.date - start.date) / 1000;
     // save tracker
-    localStorage.setItem("itemTracker-" + currentCharacter, JSON.stringify(this.itemTracker));
-    localStorage.setItem("MIIDOptions-" + currentCharacter, JSON.stringify(this.options));
-
-
+    this.saveItemTracker();
+    this.options.SaveOptions();
 
     // !silent && console.log(`xp change: ${resDiff.xpChange}, game.skills.allObjects.length: ${game.skills.allObjects.length}`)
     let rateFactor = 1;
@@ -421,7 +402,7 @@ class ItemDashboard {
       if (this.resDiff.intervalDur == 0) {
         rateFactor = 1;
       } else {
-        rateFactor = timePassed / this.resDiff.intervalDur;
+        rateFactor = this.resDiff.timePassed / this.resDiff.intervalDur;
       }
     } else {
       if (!this.options.itemTracked) {
@@ -450,6 +431,9 @@ class ItemDashboard {
     for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
       let itemData = game.items.allObjects[itemIndex];
       let itemID = itemData.id;
+      if (this.options.blacklistItems[itemID] && !this.options.blacklistMode) {
+        continue;
+      }
       let startQty = start.bulkItems[itemID] || 0;
       let currQty = curr.bulkItems[itemID] || 0;
       let change = currQty - startQty;
@@ -465,8 +449,6 @@ class ItemDashboard {
       this.resDiff.worthChange[itemID] = worthChange;
       this.resDiff.worthRate[itemID] = worthChange / rateFactor;
       // split by farming
-      // I miss you horsie
-      // Daisy, where are you now
       if (itemData.category == "Farming") {
         this.resDiff.farmingChanges = true;
         this.resDiff.farmingItemChange += change;
@@ -478,7 +460,7 @@ class ItemDashboard {
       }
       if (change < 0 && currQty > 0) {
         this.resDiff.lossChanges = true;
-        let timeLeft = currQty / (-change / timePassed);
+        let timeLeft = currQty / (-change / this.resDiff.timePassed);
         this.resDiff.timeLeft[itemID] = timeLeft;
         !silent && console.log(`${itemData.name} running out in ${this.resDiff.timeLeft[itemID]}`);
       }
@@ -507,7 +489,7 @@ class ItemDashboard {
       this.resDiff.pointChange[pointName] = change;
       if (!silent && change != 0) console.log(pointName, " differ by", rate, "/", this.resDiff.intervalLabel);
       if (currQty > 0 && change < 0 && trackTimeLeft[pointName]) {
-        let timeLeft = currQty / (-change / timePassed);
+        let timeLeft = currQty / (-change / this.resDiff.timePassed);
         this.resDiff.pointTimeLeft[pointName] = timeLeft;
         !silent && console.log(`${pointName} point running out in ${this.resDiff.pointTimeLeft[pointName]}`);
       }
@@ -533,7 +515,6 @@ class ItemDashboard {
     if (document.getElementById("dashWealthChange") != null) {
       $("#dashWealthChange").text(`${this.roundCustom(this.resDiff.netWealthRate, 0)}/${this.resDiff.intervalLabel}`);
     }
-    return this.resDiff;
   }
 
   handleItemClick(itemID: string) {
@@ -865,9 +846,6 @@ class ItemDashboard {
     return pointRow;
   }
 
-  // window.dashItemRows = "";
-  // window.dashPointRows = "";
-  // window.dashContent = "";
   toggleBlacklist() {
     this.options.blacklistMode = !this.options.blacklistMode
   }
