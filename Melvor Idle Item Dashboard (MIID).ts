@@ -3,41 +3,50 @@ declare interface Window {
 }
 
 class Options {
-  public pointTracked: SnapshotKeys | "";
-  public itemTracked: string;
-  public intervalTracked: number;
-  public trackIntervals: any;
-  public blacklistMode: boolean;
-  public blacklistItems: any;
+  public BlacklistItems: any;
+  public BlacklistMode: boolean;
+  public IntervalTracked: number;
+  public ItemTracked: string;
+  public PointTracked: SnapshotKeys | "";
+  public TrackIntervals: any;
 
   constructor() {
-    this.pointTracked = "";
-    this.itemTracked = "";
-    this.intervalTracked = 1;
-    this.trackIntervals = [
+    this.BlacklistItems = {};
+    this.BlacklistMode = false;
+    this.IntervalTracked = 0;
+    this.ItemTracked = "";
+    this.PointTracked = "";
+    this.TrackIntervals = [
       [0, 'reset'],
       [1, 'sec'],
       [60, 'min'],
       [3600, 'hour'],
       [3600 * 24, 'day']
     ];
-    this.blacklistMode = false;
-    this.blacklistItems = {};
 
-    let localCopy = this.LoadOptions();
-    if (localCopy !== null) {
-      console.log("Found MIIDOptions")
-      const savedOptions = JSON.parse(localCopy) as Options;
-      this.pointTracked = savedOptions.pointTracked;
-      this.itemTracked = savedOptions.itemTracked;
-      this.intervalTracked = savedOptions.intervalTracked;
-      this.blacklistMode = savedOptions.blacklistMode;
-      this.blacklistItems = savedOptions.blacklistItems;
-    }
+    this.LoadOptions();
   }
 
   private LoadOptions() {
-    return localStorage.getItem(this.OptionsStorageKey());
+    let localCopy = localStorage.getItem(this.OptionsStorageKey());
+    if (localCopy !== null) {
+      const savedOptions = JSON.parse(localCopy) as Options;
+      if (savedOptions.BlacklistItems) {
+        this.BlacklistItems = savedOptions.BlacklistItems;
+      }
+      if (savedOptions.BlacklistMode) {
+        this.BlacklistMode = savedOptions.BlacklistMode;
+      }
+      if (savedOptions.IntervalTracked) {
+        this.IntervalTracked = savedOptions.IntervalTracked;
+      }
+      if (savedOptions.ItemTracked) {
+        this.ItemTracked = savedOptions.ItemTracked;
+      }
+      if (savedOptions.PointTracked) {
+        this.PointTracked = savedOptions.PointTracked;
+      }
+    }
   }
 
   public SaveOptions() {
@@ -45,40 +54,40 @@ class Options {
   }
 
   private OptionsStorageKey() {
-    return "MIIDOptions-" + currentCharacter;
+    return "MIID-options-" + currentCharacter;
   }
 }
 
 interface SnapshotOptions {
-  prayerPoints: number;
-  slayerCoins: number;
-  gp: number;
-  hp: number;
-  kills: number;
+  Gold: number;
+  Health: number;
+  Kills: number;
+  PrayerPoints: number;
+  SlayerCoins: number;
 }
 
 class Snapshot implements SnapshotOptions {
-  public date: number;
-  public bulkItems: { [name: string]: number };
   // public skills: allXP(),
-  public prayerPoints: number;
-  public slayerCoins: number;
-  public gp: number;
-  public hp: number;
-  public kills: number;
+  public BulkItems: { [name: string]: number };
+  public Date: number;
+  public Gold: number;
+  public Health: number;
+  public Kills: number;
+  public PrayerPoints: number;
+  public SlayerCoins: number;
 
   constructor() {
-    this.date = (new Date()).getTime();
-    this.bulkItems = this.itemsOwned();
     // this.skills= this.allXP();
-    this.prayerPoints = game.combat.player.prayerPoints;
-    this.slayerCoins = game.slayerCoins.amount;
-    this.gp = game.gp.amount;
-    this.hp = this.effHp();
-    this.kills = this.totalKills();
+    this.BulkItems = this.OwnedItems();
+    this.Date = (new Date()).getTime();
+    this.Gold = game.gp.amount;
+    this.Health = this.EffectiveHealth();
+    this.Kills = this.TotalKills();
+    this.PrayerPoints = game.combat.player.prayerPoints;
+    this.SlayerCoins = game.slayerCoins.amount;
   }
 
-  effHp() {
+  EffectiveHealth() {
     let foodObj = game.combat.player.food.currentSlot;
     let calcFoodQty = foodObj.quantity * (1 + game.combat.player.modifiers.increasedChanceToPreserveFood);
     let healValue = Math.floor(game.combat.player.getFoodHealing(foodObj.item) * this.AutoEatEfficiency() / 100);
@@ -94,7 +103,7 @@ class Snapshot implements SnapshotOptions {
     return Math.max(percent, 1);
   }
 
-  totalKills() {
+  TotalKills() {
     let kills = 0;
     for (let monster of game.monsters.allObjects) {
       kills += game.stats.monsterKillCount(monster) || 0;
@@ -102,8 +111,8 @@ class Snapshot implements SnapshotOptions {
     return kills;
   }
 
-  itemsOwned(silent = true) {
-    function EnsureItem(bulk: { [name: string]: number }, id: string) {
+  OwnedItems(silent = true) {
+    function ensureItemExists(bulk: { [name: string]: number }, id: string) {
       if (!bulk[id]) {
         bulk[id] = 0;
       }
@@ -114,7 +123,7 @@ class Snapshot implements SnapshotOptions {
     for (let bankTab of game.bank.itemsByTab) {
       for (let bankSlot of bankTab) {
         let itemID = bankSlot.item.id;
-        EnsureItem(bulk, itemID);
+        ensureItemExists(bulk, itemID);
         bulk[itemID] += bankSlot.quantity;
       }
     }
@@ -124,7 +133,7 @@ class Snapshot implements SnapshotOptions {
       let slotArray = equipmentSet.equipment.slotArray;
       for (let slot of slotArray) {
         let gearID = slot.item.id;
-        EnsureItem(bulk, gearID);
+        ensureItemExists(bulk, gearID);
         let qty = slot.quantity;
         if (gearID) {
           bulk[gearID] += qty;
@@ -135,7 +144,7 @@ class Snapshot implements SnapshotOptions {
     // tally food, ignore golbin food at equippedFood[3]
     for (let foodSlot of game.combat.player.food.slots) {
       let foodID = foodSlot.item.id;
-      EnsureItem(bulk, foodID);
+      ensureItemExists(bulk, foodID);
       let qty = foodSlot.quantity;
       if (qty > 0) {
         !silent && console.log(`food item:${foodSlot.item.name} qty ${qty}`);
@@ -211,91 +220,91 @@ class Snapshot implements SnapshotOptions {
 type SnapshotKeys = keyof SnapshotOptions;
 
 class ResultDiff {
-  public rateFactor: number;
-  public netWealthRate: number;
-  public netWealthChange: number;
-  public timePassed: number;
-  public intervalDur: number;
-  public intervalLabel: string;
-  public itemChange: { [name: string]: number };
-  public worthChange: { [name: string]: number };
-  public itemRate: { [name: string]: number };
-  public worthRate: { [name: string]: number };
-  public itemRound: number;
-  public goldRound: number;
-  public generalItemRate: number;
-  public generalItemChange: number;
-  public generalWorthChange: number;
-  public generalWorthRate: number;
-  public generalChanges: boolean;
-  public farmingItemRate: number;
-  public farmingItemChange: number;
-  public farmingWorthChange: number;
-  public farmingWorthRate: number;
-  public farmingChanges: boolean;
-  public totalWorthChange: number;
-  public totalWorthRate: number;
-  public pointChange: { [name: string]: number };
-  public pointRate: { [name: string]: number };
-  public pointTimeLeft: { [name: string]: number };
-  public pointChanges: boolean;
-  public xpChange: any[];
-  public xpRate: any[];
-  public poolChange: any[];
-  public poolRate: any[];
-  public poolPercChange: any[];
-  public poolPercRate: any[];
-  public masteryChange: any[];
-  public masteryRate: any[];
-  public skillChanges: boolean;
-  public lossChanges: boolean;
-  public timeLeft: { [name: string]: number };
+  public FarmingChanges: boolean;
+  public FarmingItemChange: number;
+  public FarmingItemRate: number;
+  public FarmingWorthChange: number;
+  public FarmingWorthRate: number;
+  public GeneralChanges: boolean;
+  public GeneralItemChange: number;
+  public GeneralItemRate: number;
+  public GeneralWorthChange: number;
+  public GeneralWorthRate: number;
+  public GoldRound: number;
+  public IntervalDur: number;
+  public IntervalLabel: string;
+  public ItemChange: { [name: string]: number };
+  public ItemRate: { [name: string]: number };
+  public ItemRound: number;
+  public LossChanges: boolean;
+  public MasteryChange: any[];
+  public MasteryRate: any[];
+  public NetWealthChange: number;
+  public NetWealthRate: number;
+  public PointChange: { [name: string]: number };
+  public PointChanges: boolean;
+  public PointRate: { [name: string]: number };
+  public PointTimeLeft: { [name: string]: number };
+  public PoolChange: any[];
+  public PoolPercChange: any[];
+  public PoolPercRate: any[];
+  public PoolRate: any[];
+  public RateFactor: number;
+  public SkillChanges: boolean;
+  public TimeLeft: { [name: string]: number };
+  public TimePassed: number;
+  public TotalWorthChange: number;
+  public TotalWorthRate: number;
+  public WorthChange: { [name: string]: number };
+  public WorthRate: { [name: string]: number };
+  public XpChange: any[];
+  public XpRate: any[];
 
   constructor() {
-    this.rateFactor= 0;
-    this.netWealthRate= 0;
-    this.netWealthChange= 0;
-    this.timePassed= 0;
-    this.intervalDur= -1;
-    this.intervalLabel= "default";
-    this.itemChange= {};
-    this.worthChange= {};
-    this.itemRate= {};
-    this.worthRate= {};
-    this.itemRound= 2;
-    this.goldRound= 0;
-    this.generalItemRate= 0;
-    this.generalItemChange= 0;
-    this.generalWorthChange= 0;
-    this.generalWorthRate= 0;
-    this.generalChanges= false;
-    this.farmingItemRate= 0;
-    this.farmingItemChange= 0;
-    this.farmingWorthChange= 0;
-    this.farmingWorthRate= 0;
-    this.farmingChanges= false;
-    this.totalWorthChange= 0;
-    this.totalWorthRate= 0;
-    this.pointChange= {};
-    this.pointRate= {};
-    this.pointTimeLeft= {};
-    this.pointChanges= false;
-    this.xpChange= new Array(game.skills.allObjects.length).fill(0);
-    this.xpRate= new Array(game.skills.allObjects.length).fill(0);
-    this.poolChange= new Array(game.skills.allObjects.length).fill(0);
-    this.poolRate= new Array(game.skills.allObjects.length).fill(0);
-    this.poolPercChange= new Array(game.skills.allObjects.length).fill(0);
-    this.poolPercRate= new Array(game.skills.allObjects.length).fill(0);
-    this.masteryChange= new Array(game.skills.allObjects.length).fill(0);
-    this.masteryRate= new Array(game.skills.allObjects.length).fill(0);
-    this.skillChanges= false;
-    this.lossChanges= false;
-    this.timeLeft= {};
+    this.FarmingChanges= false;
+    this.FarmingItemChange= 0;
+    this.FarmingItemRate= 0;
+    this.FarmingWorthChange= 0;
+    this.FarmingWorthRate= 0;
+    this.GeneralChanges= false;
+    this.GeneralItemChange= 0;
+    this.GeneralItemRate= 0;
+    this.GeneralWorthChange= 0;
+    this.GeneralWorthRate= 0;
+    this.GoldRound= 0;
+    this.IntervalDur= -1;
+    this.IntervalLabel= "default";
+    this.ItemChange= {};
+    this.ItemRate= {};
+    this.ItemRound= 2;
+    this.LossChanges= false;
+    this.MasteryChange= new Array(game.skills.allObjects.length).fill(0);
+    this.MasteryRate= new Array(game.skills.allObjects.length).fill(0);
+    this.NetWealthChange= 0;
+    this.NetWealthRate= 0;
+    this.PointChange= {};
+    this.PointChanges= false;
+    this.PointRate= {};
+    this.PointTimeLeft= {};
+    this.PoolChange= new Array(game.skills.allObjects.length).fill(0);
+    this.PoolPercChange= new Array(game.skills.allObjects.length).fill(0);
+    this.PoolPercRate= new Array(game.skills.allObjects.length).fill(0);
+    this.PoolRate= new Array(game.skills.allObjects.length).fill(0);
+    this.RateFactor= 0;
+    this.SkillChanges= false;
+    this.TimeLeft= {};
+    this.TimePassed= 0;
+    this.TotalWorthChange= 0;
+    this.TotalWorthRate= 0;
+    this.WorthChange= {};
+    this.WorthRate= {};
+    this.XpChange= new Array(game.skills.allObjects.length).fill(0);
+    this.XpRate= new Array(game.skills.allObjects.length).fill(0);
   }
 }
 
 class ItemDashboard {
-  public options: Options;
+  options: Options;
   itemTracker: {
     start: Snapshot;
     curr: Snapshot;
@@ -309,22 +318,24 @@ class ItemDashboard {
       curr: new Snapshot(),
     };
     this.resDiff = new ResultDiff();
+
+    this.LoadItemTracker();
   }
 
-  resetResDiff() {
+  ResetResultDiff() {
     this.resDiff = new ResultDiff();
   }
 
-  toggleIntervalSize() {
-    if (this.options.itemTracked !== "") {
-      this.options.itemTracked = "";
-      this.options.intervalTracked = 0;
+  ToggleIntervalSize() {
+    if (this.options.ItemTracked !== "") {
+      this.options.ItemTracked = "";
+      this.options.IntervalTracked = 0;
     }
-    this.options.intervalTracked = (this.options.intervalTracked + 1) % this.options.trackIntervals.length;
+    this.options.IntervalTracked = (this.options.IntervalTracked + 1) % this.options.TrackIntervals.length;
   }
 
-  getTimeString(sec: number) {
-    let s = Math.round(sec)
+  GetTimeString(seconds: number) {
+    let s = Math.round(seconds)
     let h = Math.floor(s / 3600)
     let m = Math.floor((s - h * 3600) / 60)
     s = s - 3600 * h - 60 * m;
@@ -337,34 +348,54 @@ class ItemDashboard {
     return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
 
-  resetItemTracker() {
+  ResetItemTracker() {
     this.itemTracker.start = new Snapshot();
     this.itemTracker.curr = new Snapshot();
-    this.trackerTick();
+    this.TickTracker();
   }
 
-  setupItemTracker() {
-    let localCopy = this.loadItemTracker();
+  LoadItemTracker() {
+    let localCopy = localStorage.getItem(this.ItemTrackerStorageKey());
     if (localCopy == null) {
-      this.resetItemTracker();
+      this.ResetItemTracker();
     } else {
-      this.itemTracker = JSON.parse(localCopy);
+      let savedTracker = JSON.parse(localCopy);
+      if (savedTracker && savedTracker.start) {
+        let savedStart = savedTracker.start as Snapshot;
+        if (savedStart.BulkItems) {
+          this.itemTracker.curr.BulkItems = savedStart.BulkItems;
+        }
+        if (savedStart.Date) {
+          this.itemTracker.curr.Date = savedStart.Date;
+        }
+        if (savedStart.Gold) {
+          this.itemTracker.curr.Gold = savedStart.Gold;
+        }
+        if (savedStart.Health) {
+          this.itemTracker.curr.Health = savedStart.Health;
+        }
+        if (savedStart.Kills) {
+          this.itemTracker.curr.Kills = savedStart.Kills;
+        }
+        if (savedStart.PrayerPoints) {
+          this.itemTracker.curr.PrayerPoints = savedStart.PrayerPoints;
+        }
+        if (savedStart.SlayerCoins) {
+          this.itemTracker.curr.SlayerCoins = savedStart.SlayerCoins;
+        }
+      }
     }
   }
 
-  loadItemTracker() {
-    return localStorage.getItem(this.itemTrackerStorageKey());
+  SaveItemTracker() {
+    localStorage.setItem(this.ItemTrackerStorageKey(), JSON.stringify(this.itemTracker.start));
   }
 
-  saveItemTracker() {
-    localStorage.setItem(this.itemTrackerStorageKey(), JSON.stringify(this.itemTracker));
+  ItemTrackerStorageKey() {
+    return "MIID-item-tracker-start-" + currentCharacter;
   }
 
-  itemTrackerStorageKey() {
-    return "itemTracker-" + currentCharacter;
-  }
-
-  roundCustom(nr: number, roundDigits = 0, letters = true) {
+  RoundCustom(nr: number, roundDigits = 0, letters = true) {
     // 12345.6789 --> roundDecs:
     // 12345
     if (Math.abs(nr) < 1000 || !letters) {
@@ -378,52 +409,52 @@ class ItemDashboard {
     }
   }
 
-  setItemTracked(itemID: string) {
-    this.options.itemTracked = itemID;
+  SetItemTracked(itemID: string) {
+    this.options.ItemTracked = itemID;
   }
 
-  trackerTick(silent = true) {
+  TickTracker(silent = true) {
     this.itemTracker.curr = new Snapshot();
     let { start, curr } = this.itemTracker;
-    this.resetResDiff();
-    this.resDiff.timePassed = (curr.date - start.date) / 1000;
+    this.ResetResultDiff();
+    this.resDiff.TimePassed = (curr.Date - start.Date) / 1000;
     // save tracker
-    this.saveItemTracker();
+    this.SaveItemTracker();
     this.options.SaveOptions();
 
     // !silent && console.log(`xp change: ${resDiff.xpChange}, game.skills.allObjects.length: ${game.skills.allObjects.length}`)
     let rateFactor = 1;
-    const itemTracked = this.options.itemTracked;
+    const itemTracked = this.options.ItemTracked;
     if (itemTracked == "") {
       // time-based tracking
-      let interval = this.options.trackIntervals[this.options.intervalTracked];
-      this.resDiff.intervalDur = interval[0];
-      this.resDiff.intervalLabel = interval[1];
-      if (this.resDiff.intervalDur == 0) {
+      let interval = this.options.TrackIntervals[this.options.IntervalTracked];
+      this.resDiff.IntervalDur = interval[0];
+      this.resDiff.IntervalLabel = interval[1];
+      if (this.resDiff.IntervalDur == 0) {
         rateFactor = 1;
       } else {
-        rateFactor = this.resDiff.timePassed / this.resDiff.intervalDur;
+        rateFactor = this.resDiff.TimePassed / this.resDiff.IntervalDur;
       }
     } else {
-      if (!this.options.itemTracked) {
+      if (!this.options.ItemTracked) {
         // point tracking
-        if (this.options.pointTracked) {
-          const snapshotKey = this.options.pointTracked;
+        if (this.options.PointTracked) {
+          const snapshotKey = this.options.PointTracked;
           rateFactor = curr[snapshotKey] - start[snapshotKey];
-          this.resDiff.intervalLabel = this.options.itemTracked;
+          this.resDiff.IntervalLabel = this.options.ItemTracked;
         } else {
-          console.log(`Error tracking by ${this.options.itemTracked}`);
+          console.log(`Error tracking by ${this.options.ItemTracked}`);
         }
       } else {
         // track relative to a specific item's change
-        rateFactor = this.itemTracker.curr.bulkItems[this.options.itemTracked] -
-          this.itemTracker.start.bulkItems[this.options.itemTracked]
+        rateFactor = this.itemTracker.curr.BulkItems[this.options.ItemTracked] -
+          this.itemTracker.start.BulkItems[this.options.ItemTracked]
 
-        let itemData = game.items.getObjectByID(this.options.itemTracked);
+        let itemData = game.items.getObjectByID(this.options.ItemTracked);
         if (itemData) {
-          this.resDiff.intervalLabel = itemData.name;
+          this.resDiff.IntervalLabel = itemData.name;
         }
-        !silent && console.log(`Tracking by ${this.options.itemTracked}`)
+        !silent && console.log(`Tracking by ${this.options.ItemTracked}`)
       }
     }
 
@@ -431,67 +462,66 @@ class ItemDashboard {
     for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
       let itemData = game.items.allObjects[itemIndex];
       let itemID = itemData.id;
-      if (this.options.blacklistItems[itemID] && !this.options.blacklistMode) {
+      if (this.options.BlacklistItems[itemID] && !this.options.BlacklistMode) {
         continue;
       }
-      let startQty = start.bulkItems[itemID] || 0;
-      let currQty = curr.bulkItems[itemID] || 0;
+      let startQty = start.BulkItems[itemID] || 0;
+      let currQty = curr.BulkItems[itemID] || 0;
       let change = currQty - startQty;
       if (change == 0) continue;
 
       // absolute change, interval rate, time left
-      this.resDiff.itemChange[itemID] = change;
-      this.resDiff.itemRate[itemID] = change / rateFactor;
+      this.resDiff.ItemChange[itemID] = change;
+      this.resDiff.ItemRate[itemID] = change / rateFactor;
 
       // register change
-      !silent && console.log(`${itemData.name} changed by ${this.resDiff.itemRate[itemID]} / ${this.resDiff.intervalLabel}`);
+      !silent && console.log(`${itemData.name} changed by ${this.resDiff.ItemRate[itemID]} / ${this.resDiff.IntervalLabel}`);
       let worthChange = change * itemData.sellsFor;
-      this.resDiff.worthChange[itemID] = worthChange;
-      this.resDiff.worthRate[itemID] = worthChange / rateFactor;
+      this.resDiff.WorthChange[itemID] = worthChange;
+      this.resDiff.WorthRate[itemID] = worthChange / rateFactor;
       // split by farming
       if (itemData.category == "Farming") {
-        this.resDiff.farmingChanges = true;
-        this.resDiff.farmingItemChange += change;
-        this.resDiff.farmingWorthChange += worthChange;
+        this.resDiff.FarmingChanges = true;
+        this.resDiff.FarmingItemChange += change;
+        this.resDiff.FarmingWorthChange += worthChange;
       } else {
-        this.resDiff.generalChanges = true;
-        this.resDiff.generalItemChange += change;
-        this.resDiff.generalWorthChange += worthChange;
+        this.resDiff.GeneralChanges = true;
+        this.resDiff.GeneralItemChange += change;
+        this.resDiff.GeneralWorthChange += worthChange;
       }
       if (change < 0 && currQty > 0) {
-        this.resDiff.lossChanges = true;
-        let timeLeft = currQty / (-change / this.resDiff.timePassed);
-        this.resDiff.timeLeft[itemID] = timeLeft;
-        !silent && console.log(`${itemData.name} running out in ${this.resDiff.timeLeft[itemID]}`);
+        this.resDiff.LossChanges = true;
+        let timeLeft = currQty / (-change / this.resDiff.TimePassed);
+        this.resDiff.TimeLeft[itemID] = timeLeft;
+        !silent && console.log(`${itemData.name} running out in ${this.resDiff.TimeLeft[itemID]}`);
       }
     }
-    this.resDiff.generalItemRate = this.resDiff.generalItemChange / rateFactor;
-    this.resDiff.generalWorthRate = this.resDiff.generalWorthChange / rateFactor;
+    this.resDiff.GeneralItemRate = this.resDiff.GeneralItemChange / rateFactor;
+    this.resDiff.GeneralWorthRate = this.resDiff.GeneralWorthChange / rateFactor;
 
-    this.resDiff.farmingItemRate = this.resDiff.farmingItemChange / rateFactor;
-    this.resDiff.farmingWorthRate = this.resDiff.farmingWorthChange / rateFactor;
+    this.resDiff.FarmingItemRate = this.resDiff.FarmingItemChange / rateFactor;
+    this.resDiff.FarmingWorthRate = this.resDiff.FarmingWorthChange / rateFactor;
 
-    this.resDiff.totalWorthChange = this.resDiff.generalWorthChange + this.resDiff.farmingWorthChange;
-    this.resDiff.totalWorthRate = this.resDiff.totalWorthChange / rateFactor;
+    this.resDiff.TotalWorthChange = this.resDiff.GeneralWorthChange + this.resDiff.FarmingWorthChange;
+    this.resDiff.TotalWorthRate = this.resDiff.TotalWorthChange / rateFactor;
 
-    this.resDiff.netWealthChange = this.resDiff.totalWorthChange + curr.gp - start.gp;
-    this.resDiff.netWealthRate = (this.resDiff.totalWorthChange + curr.gp - start.gp) / rateFactor;
+    this.resDiff.NetWealthChange = this.resDiff.TotalWorthChange + curr.Gold - start.Gold;
+    this.resDiff.NetWealthRate = (this.resDiff.TotalWorthChange + curr.Gold - start.Gold) / rateFactor;
     // points
-    let pointNames = ["gp", "prayerPoints", "slayerCoins", "hp", "kills"];
+    let pointNames: SnapshotKeys[] = ["Gold", "PrayerPoints", "SlayerCoins", "Health", "Kills"];
     let trackTimeLeft: { [name: string]: boolean } = { "prayerPoints": true, "hp": true };
     for (let pointName of pointNames) {
-      let snapshotKey = pointName as SnapshotKeys;
-      let startQty = start[snapshotKey];
-      let currQty = curr[snapshotKey];
+      let startQty = start[pointName];
+      let currQty = curr[pointName];
       let change = currQty - startQty;
       let rate = change / rateFactor;
-      this.resDiff.pointRate[pointName] = rate;
-      this.resDiff.pointChange[pointName] = change;
-      if (!silent && change != 0) console.log(pointName, " differ by", rate, "/", this.resDiff.intervalLabel);
+      this.resDiff.PointRate[pointName] = rate;
+      this.resDiff.PointChange[pointName] = change;
+      if (!silent && change != 0) console.log(pointName, " differ by", rate, "/", this.resDiff.IntervalLabel);
       if (currQty > 0 && change < 0 && trackTimeLeft[pointName]) {
-        let timeLeft = currQty / (-change / this.resDiff.timePassed);
-        this.resDiff.pointTimeLeft[pointName] = timeLeft;
-        !silent && console.log(`${pointName} point running out in ${this.resDiff.pointTimeLeft[pointName]}`);
+        let timeLeft = currQty / (-change / this.resDiff.TimePassed);
+        this.resDiff.PointTimeLeft[pointName] = timeLeft;
+        !silent && console.log(`${pointName} point running out in ${this.resDiff.PointTimeLeft[pointName]}`);
       }
     }
 
@@ -510,27 +540,27 @@ class ItemDashboard {
     //         this.resDiff.masteryRate[skillID] = this.resDiff.masteryChange[skillID] / rateFactor;
     //     }
 
-    this.resDiff.rateFactor = rateFactor;
+    this.resDiff.RateFactor = rateFactor;
     // glove charges (todo)
     if (document.getElementById("dashWealthChange") != null) {
-      $("#dashWealthChange").text(`${this.roundCustom(this.resDiff.netWealthRate, 0)}/${this.resDiff.intervalLabel}`);
+      $("#dashWealthChange").text(`${this.RoundCustom(this.resDiff.NetWealthRate, 0)}/${this.resDiff.IntervalLabel}`);
     }
   }
 
-  handleItemClick(itemID: string) {
-    if (this.options.blacklistMode) {
-      if (this.options.blacklistItems[itemID]) {
-        this.options.blacklistItems[itemID] = false;
+  HandleItemClick(itemID: string) {
+    if (this.options.BlacklistMode) {
+      if (this.options.BlacklistItems[itemID]) {
+        this.options.BlacklistItems[itemID] = false;
       } else {
-        this.options.blacklistItems[itemID] = true;
+        this.options.BlacklistItems[itemID] = true;
       }
     } else {
-      this.setItemTracked(itemID);
+      this.SetItemTracked(itemID);
     }
-    this.updateDash();
+    this.UpdateDashboard();
   }
 
-  getDashContent() {
+  GetDashContent() {
     let compact = $(window).width() as number < 1250;
     // use curr and start to generate some item rows, and change #dashItems for it
     let generalContent = ``
@@ -544,20 +574,20 @@ class ItemDashboard {
     for (let itemIndex = 0; itemIndex < game.items.allObjects.length; itemIndex++) {
       let itemData = game.items.allObjects[itemIndex];
       let itemID = itemData.id;
-      if (this.options.blacklistItems[itemID] && !this.options.blacklistMode) continue;
-      let change = this.resDiff.itemChange[itemID];
+      if (this.options.BlacklistItems[itemID] && !this.options.BlacklistMode) continue;
+      let change = this.resDiff.ItemChange[itemID];
 
       // each item's change, put in the right content chunk
       // display if change is nonzero or blacklisted item in blacklist mode
-      if ((change !== undefined && change !== 0) || (this.options.blacklistItems[itemID] && this.options.blacklistMode)) {
-        let itemRate = this.roundCustom(this.resDiff.itemRate[itemID], this.resDiff.itemRound);
-        let worthRate = this.roundCustom(this.resDiff.worthRate[itemID], this.resDiff.goldRound);
-        let banned = this.options.blacklistItems[itemID];
+      if ((change !== undefined && change !== 0) || (this.options.BlacklistItems[itemID] && this.options.BlacklistMode)) {
+        let itemRate = this.RoundCustom(this.resDiff.ItemRate[itemID], this.resDiff.ItemRound);
+        let worthRate = this.RoundCustom(this.resDiff.WorthRate[itemID], this.resDiff.GoldRound);
+        let banned = this.options.BlacklistItems[itemID];
         let row;
         // create item row
         if (compact) {
           row = `
-                <div class="pointer-enabled" onClick="window.dashboard.handleItemClick('${itemID}')">
+                <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
                     <img width="32" height="32" src="${itemData.media}"></img>
                     <span>
                         ${banned ? String(itemRate).strike() : itemRate}
@@ -567,7 +597,7 @@ class ItemDashboard {
         } else {
           row = `
                 <div class="row">
-                    <div class="col-4 pointer-enabled" onClick="window.dashboard.handleItemClick('${itemID}')">
+                    <div class="col-4 pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
                         <img class="nav-img" src="${itemData.media}"></img>
                         ${banned ? itemData.name.strike() : itemData.name}
                     </div>
@@ -585,12 +615,12 @@ class ItemDashboard {
         }
         // Items running out --> lossContent
         // add row to loss content
-        if (this.resDiff.timeLeft[itemID] > 0) {
-          let timeString = this.getTimeString(this.resDiff.timeLeft[itemID]);
+        if (this.resDiff.TimeLeft[itemID] > 0) {
+          let timeString = this.GetTimeString(this.resDiff.TimeLeft[itemID]);
           let lossRow = ``;
           if (compact) {
             lossRow = `
-                    <div class="pointer-enabled" onClick="window.dashboard.handleItemClick('${itemID}')">
+                    <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
                         <img width="32" height="32" src="${itemData.media}"></img>
                         <span>
                             ${timeString} left
@@ -599,10 +629,10 @@ class ItemDashboard {
                     </div`;
           } else {
             lossRow = `
-                    <div class="row pointer-enabled" onClick="window.dashboard.handleItemClick('${itemID}')">
+                    <div class="row pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
                         <div class="col-6">
                             <img class="nav-img" src="${itemData.media}"></img>
-                            ${this.roundCustom(this.itemTracker.curr.bulkItems[itemID], 1)}
+                            ${this.RoundCustom(this.itemTracker.curr.BulkItems[itemID], 1)}
                         </div>
                         <div class="col-6">${timeString} left</div>
                     </div>`;
@@ -657,24 +687,24 @@ class ItemDashboard {
         <h5> General items </h5>
         <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/main/bank_header.svg"></img>
         <br>
-        <span>${this.roundCustom(this.resDiff.generalItemRate, this.resDiff.itemRound)}</span>
+        <span>${this.RoundCustom(this.resDiff.GeneralItemRate, this.resDiff.ItemRound)}</span>
         <br>
         <h5> Item worth </h5>
         <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg"></img>
         <br>
-        <span>${this.roundCustom(this.resDiff.generalWorthRate, this.resDiff.goldRound)}</span>
+        <span>${this.RoundCustom(this.resDiff.GeneralWorthRate, this.resDiff.GoldRound)}</span>
         <br>`
       farmingContent += `
         <br>
         <h5> Farming items </h5>
         <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/skills/farming/farming.svg"></img>
         <br>
-        <span>${this.roundCustom(this.resDiff.farmingItemRate, this.resDiff.itemRound)}</span>
+        <span>${this.RoundCustom(this.resDiff.FarmingItemRate, this.resDiff.ItemRound)}</span>
         <br>
         <h5> Item worth </h5>
         <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg"></img>
         <br>
-        <span>${this.roundCustom(this.resDiff.farmingWorthRate, this.resDiff.goldRound)}</span>
+        <span>${this.RoundCustom(this.resDiff.FarmingWorthRate, this.resDiff.GoldRound)}</span>
         <br>`
     } else {
       // total item changes
@@ -684,10 +714,10 @@ class ItemDashboard {
                 <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/bank_header.svg"></img>
                 General Items
             </div>
-            <div class="col-4">${this.roundCustom(this.resDiff.generalItemRate, this.resDiff.itemRound)}</div>
+            <div class="col-4">${this.RoundCustom(this.resDiff.GeneralItemRate, this.resDiff.ItemRound)}</div>
             <div class="col-4">
                 <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg"></img>
-                ${this.roundCustom(this.resDiff.generalWorthRate, this.resDiff.goldRound)}
+                ${this.RoundCustom(this.resDiff.GeneralWorthRate, this.resDiff.GoldRound)}
             </div>
         </div>`;
       farmingContent += `
@@ -696,34 +726,34 @@ class ItemDashboard {
                 <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/skills/farming/farming.svg"></img>
                 Farming Items
             </div>
-            <div class="col-4">${this.roundCustom(this.resDiff.farmingItemRate, this.resDiff.itemRound)}</div>
+            <div class="col-4">${this.RoundCustom(this.resDiff.FarmingItemRate, this.resDiff.ItemRound)}</div>
             <div class="col-4">
                 <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg"></img>
-                ${this.roundCustom(this.resDiff.farmingWorthRate, this.resDiff.goldRound)}
+                ${this.RoundCustom(this.resDiff.FarmingWorthRate, this.resDiff.GoldRound)}
             </div>
         </div>`;
     }
 
-    if (this.resDiff.generalChanges)
+    if (this.resDiff.GeneralChanges)
       content += generalContent
-    if (this.resDiff.farmingChanges)
+    if (this.resDiff.FarmingChanges)
       content += farmingContent
-    if (this.resDiff.lossChanges)
+    if (this.resDiff.LossChanges)
       content += lossContent
 
     // points
     pointContent = ``;
-    pointContent += this.makePointRow(compact, "gp", "https://cdn.melvor.net/core/v018/assets/media/main/coins.svg");
-    pointContent += this.makePointRow(compact, "hp", "https://cdn.melvor.net/core/v018/assets/media/skills/combat/hitpoints.svg");
-    pointContent += this.makePointRow(compact, "kills", "https://cdn.melvor.net/core/v018/assets/media/skills/combat/combat.svg");
-    pointContent += this.makePointRow(compact, "prayerPoints", "https://cdn.melvor.net/core/v018/assets/media/skills/prayer/prayer.svg");
-    pointContent += this.makePointRow(compact, "slayerCoins", "https://cdn.melvor.net/core/v018/assets/media/main/slayer_coins.svg");
+    pointContent += this.MakePointRow(compact, "Gold", "https://cdn.melvor.net/core/v018/assets/media/main/coins.svg");
+    pointContent += this.MakePointRow(compact, "Health", "https://cdn.melvor.net/core/v018/assets/media/skills/combat/hitpoints.svg");
+    pointContent += this.MakePointRow(compact, "Kills", "https://cdn.melvor.net/core/v018/assets/media/skills/combat/combat.svg");
+    pointContent += this.MakePointRow(compact, "PrayerPoints", "https://cdn.melvor.net/core/v018/assets/media/skills/prayer/prayer.svg");
+    pointContent += this.MakePointRow(compact, "SlayerCoins", "https://cdn.melvor.net/core/v018/assets/media/main/slayer_coins.svg");
     pointContent = `<br/>
     <div class="row no-gutters">
         <h5 class="font-w700 text-center text-combat-smoke col-sm">Others</h5>
     </div>` + pointContent;
 
-    if (this.resDiff.pointChanges) {
+    if (this.resDiff.PointChanges) {
       content += pointContent;
     }
 
@@ -796,49 +826,49 @@ class ItemDashboard {
     return content;
   }
 
-  makePointRow(compact: boolean, pointName: SnapshotKeys, src: string) {
-    if (this.resDiff.pointChange[pointName] != 0) {
-      this.resDiff.pointChanges = true;
+  MakePointRow(compact: boolean, pointName: SnapshotKeys, src: string) {
+    if (this.resDiff.PointChange[pointName] != 0) {
+      this.resDiff.PointChanges = true;
     } else {
       return ``;
     }
-    let desc: { [name: string]: string } = {
-      "hp": "Hitpoints",
-      "prayerPoints": "Prayer Points",
-      "slayerCoins": "Slayer Coins",
-      "gp": "Cash",
-      "kills": "Kills"
+    let desc: { [key in keyof SnapshotOptions]: string } = {
+      "Health": "Hitpoints",
+      "PrayerPoints": "Prayer Points",
+      "SlayerCoins": "Slayer Coins",
+      "Gold": "Cash",
+      "Kills": "Kills"
     }
     let pointRow = ``;
     if (compact) {
       pointRow = `
-        <div class="pointer-enabled" onClick="window.dashboard.handleItemClick('${pointName}')">
+        <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${pointName}')">
             <img width="32" height="32" src="${src}"></img>
-            <span>${this.roundCustom(this.resDiff.pointRate[pointName], 1)}</span>
+            <span>${this.RoundCustom(this.resDiff.PointRate[pointName], 1)}</span>
         </div>`
-      if (this.resDiff.pointTimeLeft[pointName]) {
-        pointRow += `<div><span>${this.getTimeString(this.resDiff.pointTimeLeft[pointName])} left</span></div`
+      if (this.resDiff.PointTimeLeft[pointName]) {
+        pointRow += `<div><span>${this.GetTimeString(this.resDiff.PointTimeLeft[pointName])} left</span></div`
       }
     } else {
       pointRow = `
-        <div class="row no-gutters pointer-enabled" onClick="window.dashboard.handleItemClick('${pointName}')">
+        <div class="row no-gutters pointer-enabled" onClick="window.dashboard.HandleItemClick('${pointName}')">
             <div class="col-4">
                 <img class="nav-img" src="${src}"></img>
                 ${desc[pointName]}
             </div>
             <div class="col-8">
-                ${this.roundCustom(this.resDiff.pointRate[pointName], 2)}
+                ${this.RoundCustom(this.resDiff.PointRate[pointName], 2)}
             </div>
         </div>`
-      if (this.resDiff.pointTimeLeft[pointName]) {
+      if (this.resDiff.PointTimeLeft[pointName]) {
         pointRow += `
             <div class="row no-gutters">
                 <div class="col-4">
                     <img class="nav-img" src="${src}"></img>
-                    ${this.roundCustom(this.itemTracker.curr[pointName], 2)}
+                    ${this.RoundCustom(this.itemTracker.curr[pointName], 2)}
                 </div>
                 <div class="col-8">
-                    ${this.getTimeString(this.resDiff.pointTimeLeft[pointName])} left
+                    ${this.GetTimeString(this.resDiff.PointTimeLeft[pointName])} left
                 </div>
             </div>`
       }
@@ -846,31 +876,32 @@ class ItemDashboard {
     return pointRow;
   }
 
-  toggleBlacklist() {
-    this.options.blacklistMode = !this.options.blacklistMode
+  ToggleBlacklist() {
+    this.options.BlacklistMode = !this.options.BlacklistMode
   }
 
-  updateDash() {
-    let interval = this.options.trackIntervals[this.options.intervalTracked];
+  UpdateDashboard() {
+    let interval = this.options.TrackIntervals[this.options.IntervalTracked];
     let intervalLabel = interval[1];
-    let content = this.getDashContent();
-    let buttonLabel = (this.resDiff.intervalLabel == "reset") ? "Since last" : "Per:";
-    // <button type="button" class="swal2-confirm swal2-styled onClick="window.dashboard.resetItemTracker()">Reset</button>`
+    let content = this.GetDashContent();
+    let buttonLabel = (this.resDiff.IntervalLabel == "reset") ? "Since last" : "Per:";
+    // <button type="button" class="swal2-confirm swal2-styled onClick="window.dashboard.ResetItemTracker()">Reset</button>`
     if (document.getElementById("dashContent") != null) {
       $("#dashContent").html(`
-        <p>Time tracked: ${this.getTimeString(this.resDiff.timePassed)}</p>
-        <button type="button" onClick="window.dashboard.toggleIntervalSize()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
-            ${buttonLabel} ${this.resDiff.intervalLabel}
+        <p>Time tracked: ${this.GetTimeString(this.resDiff.TimePassed)}</p>
+        <button type="button" onClick="window.dashboard.ToggleIntervalSize()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
+            ${buttonLabel} ${this.resDiff.IntervalLabel}
         </button>
-        <button type="button" onClick="window.dashboard.toggleBlacklist()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: ${this.options.blacklistMode ? "rgb(200, 55, 55)" : "rgb(55, 200, 55)"}; border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
-        Blacklisting: ${this.options.blacklistMode}
+        <button type="button" onClick="window.dashboard.ToggleBlacklist()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: ${this.options.BlacklistMode ? "rgb(200, 55, 55)" : "rgb(55, 200, 55)"}; border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
+        Blacklisting: ${this.options.BlacklistMode}
         </button>
         ${content}
         `);
     }
   }
 
-  openItemDash() {
+  OpenItemDashboard() {
+    var dashboard = this;
     Swal.fire({
       title: 'M.I.I.D. (Item Dash)',
       html: `<small>by Gardens</small><div id="dashContent"></div>`,
@@ -882,8 +913,8 @@ class ItemDashboard {
     }).then((result: any) => {
       if (result.value) {
         console.log("Resetting item tracker")
-        this.resetItemTracker();
-        setTimeout(this.openItemDash, 100);
+        dashboard.ResetItemTracker();
+        setTimeout(dashboard.OpenItemDashboard, 100);
       }
     })
   }
@@ -894,7 +925,7 @@ function InjectItemTrackerButton() {
     window.dashboard = new ItemDashboard();
     let dashButton = `
         <li class="nav-main-item">
-        <div class="nav-main-link nav-compact pointer-enabled" onclick="window.dashboard.openItemDash()">
+        <div class="nav-main-link nav-compact pointer-enabled" onclick="window.dashboard.OpenItemDashboard()">
         <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/statistics_header.svg">
         <span class="nav-main-link-name">Item Dash</span>
         <img src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg" style="margin-right: 4px;" width="16px" height="16px">
@@ -902,10 +933,9 @@ function InjectItemTrackerButton() {
         </div>
         </li>`
     $(".nav-main .bank-space-nav").parent().parent().after(dashButton);
-    window.dashboard.setupItemTracker();
     setInterval(() => {
-      window.dashboard.trackerTick();
-      window.dashboard.updateDash();
+      window.dashboard.TickTracker();
+      window.dashboard.UpdateDashboard();
       // HACK for initial ticker:
       // $("#dashItems").html(getDashItemRows())
     }, 1000);
@@ -914,13 +944,12 @@ function InjectItemTrackerButton() {
 
 function LoadItemDashboard() {
   // if ((window.isLoaded && !window.currentlyCatchingUp) ||
-  //     (typeof unsafeWindow !== 'undefined' && unsafeWindow.isLoaded && !unsafeWindow.currentlyCatchingUp) ||
   //     document.getElementById("nav-menu-show") == null ||
   if (
     !(confirmedLoaded && characterSelected)
   ) {
     // console.log("Retrying...")
-    setTimeout(LoadItemDashboard, 300);
+    setTimeout(LoadItemDashboard, 500);
     return;
   } else {
     InjectItemTrackerButton();
