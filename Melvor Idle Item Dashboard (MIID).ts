@@ -1,9 +1,11 @@
+// TODO: Can I reduce the number of times I loop through all items/skills?
+
 declare interface Window {
   dashboard: ItemDashboard;
 }
 
 class Options {
-  public BlacklistItems: any;
+  public BlacklistItems: { [name: string]: boolean };
   public BlacklistMode: boolean;
   public IntervalTracked: number;
   public ItemTracked: string;
@@ -67,23 +69,27 @@ interface SnapshotOptions {
 }
 
 class Snapshot implements SnapshotOptions {
-  // public skills: allXP(),
+  dashboard: ItemDashboard;
+
   public BulkItems: { [name: string]: number };
   public Date: number;
   public Gold: number;
   public Health: number;
   public Kills: number;
   public PrayerPoints: number;
+  public Skills: { [name: string]: SkillDiff };
   public SlayerCoins: number;
 
-  constructor() {
-    // this.skills= this.allXP();
+  constructor(dashboard: ItemDashboard) {
+    this.dashboard = dashboard;
+
     this.BulkItems = this.OwnedItems();
     this.Date = (new Date()).getTime();
     this.Gold = game.gp.amount;
     this.Health = this.EffectiveHealth();
     this.Kills = this.TotalKills();
     this.PrayerPoints = game.combat.player.prayerPoints;
+    this.Skills = this.allXP();
     this.SlayerCoins = game.slayerCoins.amount;
   }
 
@@ -167,54 +173,35 @@ class Snapshot implements SnapshotOptions {
   /////////////////////////////////////////////         XP            //////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  // levelToXp = function(level) {
-  //     let xp = 0;
-  //     for (let l = 1; l <= level - 1; l++) {
-  //         xp += Math.floor(l + 300 * Math.pow(2, l / 7))
-  //     }
-  //     return Math.floor(xp / 4);
-  // }
-
-  // levels = []
-  // for (let i = 0; i < 200; i++) {
-  //     levels[i] = levelToXp(i)
-  // }
-
-  // xpToLevel = function(xp) {
-  //     let level = 1;
-  //     while (levels[level + 1] <= xp) level++;
-  //     return level;
-  // }
-
-
-  // window.idToSkillname = {};
-  // // number to name
-  // for (let key of Object.keys(CONSTANTS.skill)) {
-  //     idToSkillname[CONSTANTS.skill[key]] = key
-  // }
-  // // console.log(idToSkillname)
-
-  // window.allXP = function(loud = false) {
-  //     let skills = [];
-  //     let allSkills = game.skills.allObjects;
-  //     for (let i = 0; i < allSkills.length; i++) {
-  //         let currentSkill = allSkills[i];
-  //         skills[i] = {
-  //             name: currentSkill.name,
-  //             xp: currentSkill.xp,
-  //             level: xpToLevel(currentSkill),
-  //         }
-  //         skills[i].xpToNext = levelToXp(skills[i].level + 1) - currentSkill;
-  //         loud && console.log("skill", i, skills[i].name)
-  //         if (currentSkill.hasMastery) {
-  //             skills[i].pool = currentSkill.masteryPoolXP;
-  //             skills[i].mastery = MASTERY[i].xp.reduce((a, b) => a + b);
-  //             skills[i].poolMax = currentSkill.masteryPoolCap;
-  //             skills[i].poolPerc = currentSkill.masteryPoolProgress;
-  //         }
-  //     }
-  //     return skills;
-  // }
+  allXP(silent = true) {
+    let skills: { [name: string]: SkillDiff } = {};
+    let allSkills = game.skills.allObjects;
+    for (let i = 0; i < allSkills.length; i++) {
+      let currentSkill = allSkills[i];
+      let skillDiff: SkillDiff = {
+        Name: currentSkill.name,
+        Xp: currentSkill.xp,
+        Level: currentSkill.level,
+        Pool: 0,
+        Mastery: 0,
+        PoolMax: 0,
+        PoolPercent: 0,
+        XpToNext: this.dashboard.LevelToXp(currentSkill.virtualLevel + 1) - currentSkill.xp
+      };
+      !silent && console.log("skill", i, currentSkill.name)
+      if (currentSkill.hasMastery) {
+        let masterySkill = game.masterySkills.getObjectByID(currentSkill.id);
+        if (masterySkill) {
+          skillDiff.Pool = masterySkill.masteryPoolXP;
+          skillDiff.Mastery = masterySkill.totalMasteryXP;
+          skillDiff.PoolMax = masterySkill.masteryPoolCap;
+          skillDiff.PoolPercent = masterySkill.masteryPoolXP / masterySkill.masteryPoolCap;
+        }
+      }
+      skills[currentSkill.id] = skillDiff;
+    }
+    return skills;
+  }
 }
 
 type SnapshotKeys = keyof SnapshotOptions;
@@ -237,18 +224,18 @@ class ResultDiff {
   public ItemRate: { [name: string]: number };
   public ItemRound: number;
   public LossChanges: boolean;
-  public MasteryChange: any[];
-  public MasteryRate: any[];
+  public MasteryChange: { [name: string]: number };
+  public MasteryRate: { [name: string]: number };
   public NetWealthChange: number;
   public NetWealthRate: number;
   public PointChange: { [name: string]: number };
   public PointChanges: boolean;
   public PointRate: { [name: string]: number };
   public PointTimeLeft: { [name: string]: number };
-  public PoolChange: any[];
-  public PoolPercChange: any[];
-  public PoolPercRate: any[];
-  public PoolRate: any[];
+  public PoolChange: { [name: string]: number };
+  public PoolPercChange: { [name: string]: number };
+  public PoolPercRate: { [name: string]: number };
+  public PoolRate: { [name: string]: number };
   public RateFactor: number;
   public SkillChanges: boolean;
   public TimeLeft: { [name: string]: number };
@@ -257,49 +244,71 @@ class ResultDiff {
   public TotalWorthRate: number;
   public WorthChange: { [name: string]: number };
   public WorthRate: { [name: string]: number };
-  public XpChange: any[];
-  public XpRate: any[];
+  public XpChange: { [name: string]: number };
+  public XpRate: { [name: string]: number };
 
   constructor() {
-    this.FarmingChanges= false;
-    this.FarmingItemChange= 0;
-    this.FarmingItemRate= 0;
-    this.FarmingWorthChange= 0;
-    this.FarmingWorthRate= 0;
-    this.GeneralChanges= false;
-    this.GeneralItemChange= 0;
-    this.GeneralItemRate= 0;
-    this.GeneralWorthChange= 0;
-    this.GeneralWorthRate= 0;
-    this.GoldRound= 0;
-    this.IntervalDur= -1;
-    this.IntervalLabel= "default";
-    this.ItemChange= {};
-    this.ItemRate= {};
-    this.ItemRound= 2;
-    this.LossChanges= false;
-    this.MasteryChange= new Array(game.skills.allObjects.length).fill(0);
-    this.MasteryRate= new Array(game.skills.allObjects.length).fill(0);
-    this.NetWealthChange= 0;
-    this.NetWealthRate= 0;
-    this.PointChange= {};
-    this.PointChanges= false;
-    this.PointRate= {};
-    this.PointTimeLeft= {};
-    this.PoolChange= new Array(game.skills.allObjects.length).fill(0);
-    this.PoolPercChange= new Array(game.skills.allObjects.length).fill(0);
-    this.PoolPercRate= new Array(game.skills.allObjects.length).fill(0);
-    this.PoolRate= new Array(game.skills.allObjects.length).fill(0);
-    this.RateFactor= 0;
-    this.SkillChanges= false;
-    this.TimeLeft= {};
-    this.TimePassed= 0;
-    this.TotalWorthChange= 0;
-    this.TotalWorthRate= 0;
-    this.WorthChange= {};
-    this.WorthRate= {};
-    this.XpChange= new Array(game.skills.allObjects.length).fill(0);
-    this.XpRate= new Array(game.skills.allObjects.length).fill(0);
+    this.FarmingChanges = false;
+    this.FarmingItemChange = 0;
+    this.FarmingItemRate = 0;
+    this.FarmingWorthChange = 0;
+    this.FarmingWorthRate = 0;
+    this.GeneralChanges = false;
+    this.GeneralItemChange = 0;
+    this.GeneralItemRate = 0;
+    this.GeneralWorthChange = 0;
+    this.GeneralWorthRate = 0;
+    this.GoldRound = 0;
+    this.IntervalDur = -1;
+    this.IntervalLabel = "default";
+    this.ItemChange = {};
+    this.ItemRate = {};
+    this.ItemRound = 2;
+    this.LossChanges = false;
+    this.MasteryChange = {};
+    this.MasteryRate = {};
+    this.NetWealthChange = 0;
+    this.NetWealthRate = 0;
+    this.PointChange = {};
+    this.PointChanges = false;
+    this.PointRate = {};
+    this.PointTimeLeft = {};
+    this.PoolChange = {};
+    this.PoolPercChange = {};
+    this.PoolPercRate = {};
+    this.PoolRate = {};
+    this.RateFactor = 0;
+    this.SkillChanges = false;
+    this.TimeLeft = {};
+    this.TimePassed = 0;
+    this.TotalWorthChange = 0;
+    this.TotalWorthRate = 0;
+    this.WorthChange = {};
+    this.WorthRate = {};
+    this.XpChange = {};
+    this.XpRate = {};
+  }
+}
+
+class SkillDiff {
+  public Level: number;
+  public Mastery: number;
+  public Name: string;
+  public Pool: number;
+  public PoolMax: number;
+  public PoolPercent: number;
+  public Xp: number;
+  public XpToNext: number;
+
+  constructor() {
+    this.Level = 0;
+    this.Mastery = 0;
+    this.Name = "";
+    this.Pool = 0;
+    this.PoolMax = 0;
+    this.PoolPercent = 0;
+    this.Xp = 0;
+    this.XpToNext = 0;
   }
 }
 
@@ -311,11 +320,16 @@ class ItemDashboard {
   };
   resDiff: ResultDiff;
 
+  public levels: number[];
+
   constructor() {
+    this.levels = [];
+    this.SetupXpLevels();
+
     this.options = new Options();
     this.itemTracker = {
-      start: new Snapshot(),
-      curr: new Snapshot(),
+      start: new Snapshot(this),
+      curr: new Snapshot(this),
     };
     this.resDiff = new ResultDiff();
 
@@ -349,8 +363,8 @@ class ItemDashboard {
   }
 
   ResetItemTracker() {
-    this.itemTracker.start = new Snapshot();
-    this.itemTracker.curr = new Snapshot();
+    this.itemTracker.start = new Snapshot(this);
+    this.itemTracker.curr = new Snapshot(this);
     this.TickTracker();
   }
 
@@ -388,7 +402,12 @@ class ItemDashboard {
   }
 
   SaveItemTracker() {
-    localStorage.setItem(this.ItemTrackerStorageKey(), JSON.stringify(this.itemTracker.start));
+    localStorage.setItem(this.ItemTrackerStorageKey(), JSON.stringify(this.itemTracker.start, (key, value) => {
+      if (key === "dashboard") {
+        return null;
+      }
+      return value;
+    }));
   }
 
   ItemTrackerStorageKey() {
@@ -414,7 +433,7 @@ class ItemDashboard {
   }
 
   TickTracker(silent = true) {
-    this.itemTracker.curr = new Snapshot();
+    this.itemTracker.curr = new Snapshot(this);
     let { start, curr } = this.itemTracker;
     this.ResetResultDiff();
     this.resDiff.TimePassed = (curr.Date - start.Date) / 1000;
@@ -422,7 +441,7 @@ class ItemDashboard {
     this.SaveItemTracker();
     this.options.SaveOptions();
 
-    // !silent && console.log(`xp change: ${resDiff.xpChange}, game.skills.allObjects.length: ${game.skills.allObjects.length}`)
+    !silent && console.log(`xp change: ${this.resDiff.XpChange}, game.skills.allObjects.length: ${game.skills.allObjects.length}`)
     let rateFactor = 1;
     const itemTracked = this.options.ItemTracked;
     if (itemTracked == "") {
@@ -526,19 +545,21 @@ class ItemDashboard {
     }
 
     // XP
-    //     for (let skillID = 0; skillID < game.skills.allObjects.length; skillID++) {
-    //         this.resDiff.xpChange[skillID] = itemTracker.curr.skills[skillID].xp - start.skills[skillID].xp;
-    //         this.resDiff.xpRate[skillID] = this.resDiff.xpChange[skillID] / rateFactor
+    for (let skillIndex = 0; skillIndex < game.skills.allObjects.length; skillIndex++) {
+      let skill = game.skills.allObjects[skillIndex];
+      let skillID = skill.id;
+      this.resDiff.XpChange[skillID] = this.itemTracker.curr.Skills[skillID].Xp - start.Skills[skillID].Xp;
+      this.resDiff.XpRate[skillID] = this.resDiff.XpChange[skillID] / rateFactor
 
-    //         this.resDiff.poolPercChange[skillID] = itemTracker.curr.skills[skillID].poolPerc - start.skills[skillID].poolPerc;
-    //         this.resDiff.poolPercRate[skillID] = this.resDiff.poolPercChange[skillID] / rateFactor;
+      this.resDiff.PoolPercChange[skillID] = this.itemTracker.curr.Skills[skillID].PoolPercent - start.Skills[skillID].PoolPercent;
+      this.resDiff.PoolPercRate[skillID] = this.resDiff.PoolPercChange[skillID] / rateFactor;
 
-    //         this.resDiff.poolChange[skillID] = itemTracker.curr.skills[skillID].pool - start.skills[skillID].pool;
-    //         this.resDiff.poolRate[skillID] = this.resDiff.poolChange[skillID] / rateFactor;
+      this.resDiff.PoolChange[skillID] = this.itemTracker.curr.Skills[skillID].Pool - start.Skills[skillID].Pool;
+      this.resDiff.PoolRate[skillID] = this.resDiff.PoolChange[skillID] / rateFactor;
 
-    //         this.resDiff.masteryChange[skillID] = itemTracker.curr.skills[skillID].mastery - start.skills[skillID].mastery;
-    //         this.resDiff.masteryRate[skillID] = this.resDiff.masteryChange[skillID] / rateFactor;
-    //     }
+      this.resDiff.MasteryChange[skillID] = this.itemTracker.curr.Skills[skillID].Mastery - start.Skills[skillID].Mastery;
+      this.resDiff.MasteryRate[skillID] = this.resDiff.MasteryChange[skillID] / rateFactor;
+    }
 
     this.resDiff.RateFactor = rateFactor;
     // glove charges (todo)
@@ -766,62 +787,68 @@ class ItemDashboard {
         <h5 class = "font-w700 text-center text-combat-smoke col"> Time to Lvl </h5>
     </div>`
 
-    //     for (let skillID = 0; skillID < game.skills.allObjects.length; skillID++) {
-    //         let xpRow = ``;
-    //         let skillName = SKILLS[skillID].name;
-    //         let hasMastery = SKILLS[skillID].hasMastery;
-    //         let xpRate = this.resDiff.xpRate[skillID];
-    //         let xpChange = this.resDiff.xpChange[skillID];
-    //         let poolPercRate = this.resDiff.poolPercRate[skillID]
-    //         let masteryRate = this.resDiff.masteryRate[skillID]
-    //         let xpToNext = itemTracker.curr.skills[skillID].xpToNext;
-    //         let timeToLevel = xpToNext / (xpChange / this.resDiff.timePassed);
-    //         let until100 = (itemTracker.curr.skills[skillID].poolMax / (this.resDiff.poolChange[skillID] - this.resDiff.timePassed)) * 100;
+    for (let skillIndex = 0; skillIndex < game.skills.allObjects.length; skillIndex++) {
+      let skill = game.skills.allObjects[skillIndex];
+      let skillID = skill.id;
+      let xpRow = ``;
+      let skillName = skill.name;
+      let hasMastery = skill.hasMastery;
+      let xpRate = this.resDiff.XpRate[skillID];
+      let xpChange = this.resDiff.XpChange[skillID];
+      let poolPercRate = this.resDiff.PoolPercRate[skillID]
+      let masteryRate = this.resDiff.MasteryRate[skillID]
+      let xpToNext = this.itemTracker.curr.Skills[skillID].XpToNext;
+      let timeToLevel = xpToNext / (xpChange / this.resDiff.TimePassed);
+      let poolChange = this.resDiff.PoolChange[skillID];
+      let until100 = 0;
+      if (poolChange) {
+        until100 = (this.itemTracker.curr.Skills[skillID].PoolMax / (poolChange - this.resDiff.TimePassed)) * 100;
+      }
 
-    //         if (xpChange == 0) {
-    //             continue;
-    //         } else {
-    //             this.resDiff.skillChanges = true;
-    //         }
-    //         if (compact) {
-    //             // TODO: mobile version
-    //         } else {
-    //             xpRow = `
-    //                 <div class="row">
-    //                     <div class="col-4">
-    //                         <img class="nav-img" src="${SKILLS[skillID].media}"></img>
-    //                         ${skillName}
-    //                     </div>
-    //                     <div class="col-4">
-    //                         ${roundCustom(xpRate, 2)}
-    //                     </div>
-    //                     <div class="col-4">
-    //                         ${getTimeString(timeToLevel)}
-    //                     </div>
+      if (xpChange == 0) {
+        continue;
+      } else {
+        this.resDiff.SkillChanges = true;
+      }
+      if (compact) {
+        // TODO: mobile version
+      } else {
+        xpRow = `
+                <div class="row">
+                    <div class="col-4">
+                        <img class="nav-img" src="${skill.media}"></img>
+                        ${skillName}
+                    </div>
+                    <div class="col-4">
+                        ${this.RoundCustom(xpRate, 2)}
+                    </div>
+                    <div class="col-4">
+                        ${this.GetTimeString(timeToLevel)}
+                    </div>
 
-    //                 </div>`
-    //             if (hasMastery && itemTracker.curr.skills[skillID].poolPerc < 100) {
-    //                 xpRow += `
-    //                     <div class="row">
-    //                     <div class="col-4">
-    //                     <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
-    //                     ${skillName}
-    //                     </div>
-    //                     <div class="col-4">
-    //                     ${roundCustom(poolPercRate, 2)}%
-    //                     </div>
-    //                     <div class="col-4">
-    //                     to 100%: ${getTimeString(until100)}
-    //                     </div>
+                </div>`
+        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100) {
+          xpRow += `
+                    <div class="row">
+                    <div class="col-4">
+                    <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
+                    ${skillName}
+                    </div>
+                    <div class="col-4">
+                    ${this.RoundCustom(poolPercRate, 2)}%
+                    </div>
+                    <div class="col-4">
+                    to 100%: ${this.GetTimeString(until100)}
+                    </div>
 
-    //                     </div>`
-    //             }
-    //         }
-    //         xpContent += xpRow
-    //     }
-    //     if (this.resDiff.skillChanges) {
-    //         content += xpContent;
-    //     }
+                    </div>`
+        }
+      }
+      xpContent += xpRow
+    }
+    if (this.resDiff.SkillChanges) {
+      content += xpContent;
+    }
 
     return content;
   }
@@ -917,6 +944,26 @@ class ItemDashboard {
         setTimeout(dashboard.OpenItemDashboard, 100);
       }
     })
+  }
+
+  LevelToXp(level: number) {
+    let xp = 0;
+    for (let l = 1; l <= level - 1; l++) {
+      xp += Math.floor(l + 300 * Math.pow(2, l / 7))
+    }
+    return Math.floor(xp / 4);
+  }
+
+  SetupXpLevels() {
+    for (let i = 0; i < 200; i++) {
+      this.levels[i] = this.LevelToXp(i)
+    }
+  }
+
+  XpToLevel(xp: number) {
+    let level = 1;
+    while (this.levels[level + 1] <= xp) level++;
+    return level;
   }
 }
 
