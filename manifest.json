@@ -1,9 +1,8 @@
 {
+  "namespace":  "miid_dashboard",
   "name": "Melvor Idle Item Dashboard (MIID)",
   "description": "Track -everything- over time!",
-  "version": "2.4",
-  "entryScripts": [
-    "Melvor Idle Item Dashboard (MIID).user.js"
-  ],
-  "id": "melvor_idle_item_dashboard_miid"
+  "version": "3.0.0",
+  "id": "melvor_idle_item_dashboard_miid",
+  "setup": "setup.js"
 }

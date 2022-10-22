@@ -1,5 +1,9 @@
-declare interface Window {
-  dashboard: ItemDashboard;
+import Swal from "sweetalert2";
+
+declare global {
+  interface Window {
+    dashboard: ItemDashboard;
+  }
 }
 
 class Options {
@@ -972,5 +976,16 @@ function LoadItemDashboard() {
     InjectItemTrackerButton();
   }
 }
-LoadItemDashboard();
-// window.dashboardLoaderInterval = setInterval()
+
+export function setup(ctx: Modding.ModContext) {
+  if (ctx) {
+    ctx.onInterfaceReady(() => {
+      // Code here will only get executed after the game, character, and
+      // offline progress has been loaded.
+      InjectItemTrackerButton();
+    });
+  }
+  else {
+    LoadItemDashboard();
+  }
+}
