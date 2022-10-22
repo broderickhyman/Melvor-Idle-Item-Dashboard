@@ -550,8 +550,7 @@ class ItemDashboard {
     this.UpdateDashboard();
   }
 
-  GetDashContent() {
-    let compact = $(window).width() as number < 1250;
+  GetDashContent(compact: boolean) {
     // use curr and start to generate some item rows, and change #dashItems for it
     let generalContent = ``
     let farmingContent = ``;
@@ -580,6 +579,7 @@ class ItemDashboard {
           row = `
                 <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
                     <img width="32" height="32" src="${itemData.media}"></img>
+                    <br>
                     <span>
                         ${banned ? String(itemRate).strike() : itemRate}
                     </span>
@@ -749,13 +749,22 @@ class ItemDashboard {
     }
 
     // xp
-    xpContent = `
+    if (compact) {
+      xpContent = `
+    <br>
+    <div class = "row no-gutters">
+        <h5 class = "font-w700 text-center text-combat-smoke col"> Time to Lvl </h5>
+    </div>`;
+    }
+    else {
+      xpContent = `
     <br>
     <div class = "row no-gutters">
         <h5 class = "font-w700 text-center text-combat-smoke col"> Skill </h5>
         <h5 class = "font-w700 text-center text-combat-smoke col"> XP </h5>
         <h5 class = "font-w700 text-center text-combat-smoke col"> Time to Lvl </h5>
-    </div>`
+    </div>`;
+    }
 
     for (let skillID in this.itemTracker.curr.Skills) {
       let skillData = game.skills.getObjectByID(skillID);
@@ -784,7 +793,27 @@ class ItemDashboard {
         this.resDiff.SkillChanges = true;
       }
       if (compact) {
-        // TODO: mobile version
+
+        if (skillData.virtualLevel < skillData.levelCap) {
+          xpRow = `
+                <div>
+                    <img width="32" height="32" src="${skillData.media}"></img>
+                    <span>
+                        ${this.GetTimeString(timeToLevel)}
+                    </span>
+                    <br>
+                </div`;
+        }
+        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100) {
+          xpRow += `
+                <div>
+                    <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
+                    <span>
+                        ${skillName} to 100%: ${this.GetTimeString(until100)}
+                    </span>
+                    <br>
+                </div`;
+        }
       } else {
         if (skillData.virtualLevel < skillData.levelCap) {
           xpRow = `
@@ -846,6 +875,7 @@ class ItemDashboard {
       pointRow = `
         <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${pointName}')">
             <img width="32" height="32" src="${src}"></img>
+            <br>
             <span>${this.RoundCustom(this.resDiff.PointRate[pointName], 1)}</span>
         </div>`
       if (this.resDiff.PointTimeLeft[pointName]) {
@@ -883,11 +913,20 @@ class ItemDashboard {
   }
 
   UpdateDashboard() {
-    let content = this.GetDashContent();
+    let compact = $(window).width() as number < 1250;
+    let content = this.GetDashContent(compact);
     let buttonLabel = (this.resDiff.IntervalLabel == "reset") ? "Since last" : "Per:";
     // <button type="button" class="swal2-confirm swal2-styled onClick="window.dashboard.ResetItemTracker()">Reset</button>`
-    if (document.getElementById("dashContent") != null) {
-      $("#dashContent").html(`
+    const $dashContent = $("#dashContent");
+    if ($dashContent.length > 0) {
+      const $modal = $dashContent.parents(".swal2-popup.swal2-modal");
+      if (compact) {
+        $modal.css("width", "90%");
+      }
+      else {
+        $modal.css("width", "50%");
+      }
+      $dashContent.html(`
         <p>Time tracked: ${this.GetTimeString(this.resDiff.TimePassed)}</p>
         <button type="button" onClick="window.dashboard.ToggleIntervalSize()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
             ${buttonLabel} ${this.resDiff.IntervalLabel}
