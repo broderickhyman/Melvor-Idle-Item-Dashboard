@@ -1,5 +1,3 @@
-import Swal from "sweetalert2";
-
 declare global {
   interface Window {
     dashboard: ItemDashboard;
@@ -903,7 +901,7 @@ class ItemDashboard {
 
   OpenItemDashboard() {
     var dashboard = this;
-    Swal.fire({
+    window.Swal.fire({
       title: 'M.I.I.D. (Item Dash)',
       html: `<div><small>Created by Gardens</small></div><div><small>Updated by MyPickle</small></div><div id="dashContent"></div>`,
       width: "50%",
