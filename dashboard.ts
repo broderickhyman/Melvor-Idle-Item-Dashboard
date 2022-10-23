@@ -4,16 +4,21 @@ interface Window {
   InjectItemTrackerButton: () => void;
 }
 
-type SnapshotKeys = keyof SnapshotOptions;
+enum SnapshotOptions {
+  Gold = "Gold",
+  Health = "Health",
+  Kills = "Kills",
+  PrayerPoints = "PrayerPoints",
+  SlayerCoins = "SlayerCoins",
+}
 
 class Options {
   public BlacklistItems: { [name: string]: boolean };
   public BlacklistMode: boolean;
   public IntervalTracked: number;
   public ItemTracked: string;
-  public PointTracked: SnapshotKeys | "";
+  public PointTracked: SnapshotOptions | "";
   public TrackIntervals: any;
-  public PointOptions: string[];
 
   constructor() {
     this.BlacklistItems = {};
@@ -28,7 +33,6 @@ class Options {
       [3600, 'hour'],
       [3600 * 24, 'day']
     ];
-    this.PointOptions = Object.keys(new SnapshotOptions());
 
     this.LoadOptions();
   }
@@ -50,31 +54,20 @@ class Options {
   }
 }
 
-class SnapshotOptions {
+class Snapshot {
+  dashboard: ItemDashboard;
+
+  public BulkItems: { [name: string]: number };
+  public Date: number;
+  public Skills: { [name: string]: SkillDiff };
+  // Point tracking
   Gold: number;
   Health: number;
   Kills: number;
   PrayerPoints: number;
   SlayerCoins: number;
 
-  constructor() {
-    this.Gold = 0;
-    this.Health = 0;
-    this.Kills = 0;
-    this.PrayerPoints = 0;
-    this.SlayerCoins = 0;
-  }
-}
-
-class Snapshot extends SnapshotOptions {
-  dashboard: ItemDashboard;
-
-  public BulkItems: { [name: string]: number };
-  public Date: number;
-  public Skills: { [name: string]: SkillDiff };
-
   constructor(dashboard: ItemDashboard) {
-    super();
     this.dashboard = dashboard;
 
     this.BulkItems = this.OwnedItems();
@@ -217,7 +210,7 @@ class ResultDiff {
   public PointChange: { [name: string]: number };
   public PointChanges: boolean;
   public PointRate: { [name: string]: number };
-  public PointTimeLeft: { [name: string]: number };
+  public PointTimeLeft: { [key in SnapshotOptions]: number };
   public PoolChange: { [name: string]: number };
   public PoolPercChange: { [name: string]: number };
   public PoolPercRate: { [name: string]: number };
@@ -258,7 +251,13 @@ class ResultDiff {
     this.PointChange = {};
     this.PointChanges = false;
     this.PointRate = {};
-    this.PointTimeLeft = {};
+    this.PointTimeLeft = {
+      Gold: 0,
+      Health: 0,
+      Kills: 0,
+      PrayerPoints: 0,
+      SlayerCoins: 0
+    };
     this.PoolChange = {};
     this.PoolPercChange = {};
     this.PoolPercRate = {};
@@ -492,9 +491,9 @@ class ItemDashboard {
     this.resDiff.NetWealthChange = this.resDiff.TotalWorthChange + curr.Gold - start.Gold;
     this.resDiff.NetWealthRate = (this.resDiff.TotalWorthChange + curr.Gold - start.Gold) / rateFactor;
     // points
-    let pointNames: SnapshotKeys[] = ["Gold", "PrayerPoints", "SlayerCoins", "Health", "Kills"];
-    let trackTimeLeft: { [name: string]: boolean } = { "prayerPoints": true, "hp": true };
-    for (let pointName of pointNames) {
+    let trackTimeLeft: SnapshotOptions[] = [SnapshotOptions.PrayerPoints, SnapshotOptions.Health];
+    for (let option of EnumKeys(SnapshotOptions)) {
+      let pointName = SnapshotOptions[option];
       let startQty = start[pointName];
       let currQty = curr[pointName];
       let change = currQty - startQty;
@@ -502,7 +501,7 @@ class ItemDashboard {
       this.resDiff.PointRate[pointName] = rate;
       this.resDiff.PointChange[pointName] = change;
       if (!silent && change != 0) console.log(pointName, " differ by", rate, "/", this.resDiff.IntervalLabel);
-      if (currQty > 0 && change < 0 && trackTimeLeft[pointName]) {
+      if (currQty > 0 && change < 0 && trackTimeLeft.includes(pointName)) {
         let timeLeft = currQty / (-change / this.resDiff.TimePassed);
         this.resDiff.PointTimeLeft[pointName] = timeLeft;
         !silent && console.log(`${pointName} point running out in ${this.resDiff.PointTimeLeft[pointName]}`);
@@ -539,9 +538,9 @@ class ItemDashboard {
         this.options.BlacklistItems[itemID] = true;
       }
     } else {
-      if (this.options.PointOptions.includes(itemID)) {
+      if (Object.keys(SnapshotOptions).includes(itemID)) {
         this.options.ItemTracked = "";
-        this.options.PointTracked = itemID as SnapshotKeys;
+        this.options.PointTracked = itemID as SnapshotOptions;
       } else {
         this.options.ItemTracked = itemID;
         this.options.PointTracked = "";
@@ -734,11 +733,11 @@ class ItemDashboard {
 
     // points
     pointContent = ``;
-    pointContent += this.MakePointRow(compact, "Gold", "https://cdn.melvor.net/core/v018/assets/media/main/coins.svg");
-    pointContent += this.MakePointRow(compact, "Health", "https://cdn.melvor.net/core/v018/assets/media/skills/combat/hitpoints.svg");
-    pointContent += this.MakePointRow(compact, "Kills", "https://cdn.melvor.net/core/v018/assets/media/skills/combat/combat.svg");
-    pointContent += this.MakePointRow(compact, "PrayerPoints", "https://cdn.melvor.net/core/v018/assets/media/skills/prayer/prayer.svg");
-    pointContent += this.MakePointRow(compact, "SlayerCoins", "https://cdn.melvor.net/core/v018/assets/media/main/slayer_coins.svg");
+    pointContent += this.MakePointRow(compact, SnapshotOptions.Gold, "https://cdn.melvor.net/core/v018/assets/media/main/coins.svg");
+    pointContent += this.MakePointRow(compact, SnapshotOptions.Health, "https://cdn.melvor.net/core/v018/assets/media/skills/combat/hitpoints.svg");
+    pointContent += this.MakePointRow(compact, SnapshotOptions.Kills, "https://cdn.melvor.net/core/v018/assets/media/skills/combat/combat.svg");
+    pointContent += this.MakePointRow(compact, SnapshotOptions.PrayerPoints, "https://cdn.melvor.net/core/v018/assets/media/skills/prayer/prayer.svg");
+    pointContent += this.MakePointRow(compact, SnapshotOptions.SlayerCoins, "https://cdn.melvor.net/core/v018/assets/media/main/slayer_coins.svg");
     pointContent = `<br/>
     <div class="row no-gutters">
         <h5 class="font-w700 text-center text-combat-smoke col-sm">Others</h5>
@@ -857,13 +856,13 @@ class ItemDashboard {
     return content;
   }
 
-  MakePointRow(compact: boolean, pointName: SnapshotKeys, src: string) {
+  MakePointRow(compact: boolean, pointName: SnapshotOptions, src: string) {
     if (this.resDiff.PointChange[pointName] != 0) {
       this.resDiff.PointChanges = true;
     } else {
       return ``;
     }
-    let desc: { [key in keyof SnapshotOptions]: string } = {
+    let desc: { [key in SnapshotOptions]: string } = {
       "Health": "Hitpoints",
       "PrayerPoints": "Prayer Points",
       "SlayerCoins": "Slayer Coins",
@@ -1016,3 +1015,7 @@ function LoadItemDashboard() {
 
 window.LoadItemDashboard = LoadItemDashboard;
 window.InjectItemTrackerButton = InjectItemTrackerButton;
+
+function EnumKeys<O extends object, K extends keyof O = keyof O>(obj: O): K[] {
+  return Object.keys(obj).filter(k => Number.isNaN(+k)) as K[];
+}
