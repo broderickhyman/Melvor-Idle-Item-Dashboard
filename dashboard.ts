@@ -835,7 +835,7 @@ class ItemDashboard {
                     <br>
                 </div`;
         }
-        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100) {
+        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100 && poolPercRate !== 0) {
           xpRow += `
                 <div>
                     <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
@@ -862,7 +862,7 @@ class ItemDashboard {
 
                 </div>`;
         }
-        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100) {
+        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100 && poolPercRate !== 0) {
           xpRow += `
                     <div class="row">
                     <div class="col-4">
