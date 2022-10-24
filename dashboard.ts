@@ -107,38 +107,45 @@ class Snapshot {
       }
     }
 
+    /**
+     * Returns the quanity of the item in the slot, or the item charges for gloves
+     * @param slot
+     */
+    function getQuantity(slot: BankItem | EquipSlot) {
+      const item = slot.item;
+      if (IsEquipmentItem(item) && IsChargeGloves(item)) {
+        return game.itemCharges.getCharges(item);
+      }
+      return slot.quantity;
+    }
+
     let bulk: { [name: string]: number } = {};
     // take everything in bank, pile it here
     for (let bankTab of game.bank.itemsByTab) {
       for (let bankSlot of bankTab) {
         let itemID = bankSlot.item.id;
         ensureItemExists(bulk, itemID);
-        bulk[itemID] += bankSlot.quantity;
+        bulk[itemID] += getQuantity(bankSlot);
       }
     }
 
     // check equipment sets, ignore golbin loadout
     for (let equipmentSet of game.combat.player.equipmentSets) {
-      let slotArray = equipmentSet.equipment.slotArray;
-      for (let slot of slotArray) {
-        let gearID = slot.item.id;
+      for (let equipmentSlot of equipmentSet.equipment.slotArray) {
+        let gearID = equipmentSlot.item.id;
         ensureItemExists(bulk, gearID);
-        let qty = slot.quantity;
-        if (gearID) {
-          bulk[gearID] += qty;
-          !silent && console.log(`gear item:${slot.item.name} qty ${qty}`)
-        }
+        let quantity = getQuantity(equipmentSlot);
+        bulk[gearID] += quantity;
+        !silent && console.log(`gear item:${equipmentSlot.item.name} qty ${quantity}`)
       }
     }
     // tally food, ignore golbin food at equippedFood[3]
     for (let foodSlot of game.combat.player.food.slots) {
       let foodID = foodSlot.item.id;
       ensureItemExists(bulk, foodID);
-      let qty = foodSlot.quantity;
-      if (qty > 0) {
-        !silent && console.log(`food item:${foodSlot.item.name} qty ${qty}`);
-        bulk[foodID] += qty;
-      }
+      let quantity = foodSlot.quantity;
+      bulk[foodID] += quantity;
+      !silent && console.log(`food item:${foodSlot.item.name} qty ${quantity}`);
     }
 
     if (!silent) {
@@ -397,6 +404,18 @@ class ItemDashboard {
   }
 
   TickTracker(silent = true) {
+    /**
+     * Return the purchase item for gloves if available
+     * @param item
+     */
+    function GetGlovesPurchase(item: AnyItem): ShopPurchase | undefined {
+      if (IsEquipmentItem(item) && IsChargeGloves(item)) {
+        const shopId = item.id.replace("_Gloves", "");
+        return game.shop.purchases.getObjectByID(shopId);
+      }
+      return undefined;
+    }
+
     this.itemTracker.curr = new Snapshot(this);
     let { start, curr } = this.itemTracker;
     this.ResetResultDiff();
@@ -458,7 +477,20 @@ class ItemDashboard {
 
       // register change
       !silent && console.log(`${itemData.name} changed by ${this.resDiff.ItemRate[itemID]} / ${this.resDiff.IntervalLabel}`);
-      let worthChange = change * itemData.sellsFor;
+
+      let worthChange;
+      const glovePurchaseData = GetGlovesPurchase(itemData);
+      if (glovePurchaseData) {
+        const initialCost = glovePurchaseData.costs.gp as GloveCost;
+        // This applies any cost reduction
+        const discountedCost = game.shop.getCurrencyCost(initialCost, 1, 0);
+        const chargesAdded = (glovePurchaseData.contains.itemCharges as EquipmentQuantity).quantity;
+        worthChange = (change / chargesAdded) * discountedCost;
+      }
+      else {
+        worthChange = change * itemData.sellsFor;
+      }
+
       this.resDiff.WorthChange[itemID] = worthChange;
       this.resDiff.WorthRate[itemID] = worthChange / rateFactor;
       // split by farming
@@ -1018,4 +1050,12 @@ window.InjectItemTrackerButton = InjectItemTrackerButton;
 
 function EnumKeys<O extends object, K extends keyof O = keyof O>(obj: O): K[] {
   return Object.keys(obj).filter(k => Number.isNaN(+k)) as K[];
+}
+
+function IsEquipmentItem(item: AnyItem): item is EquipmentItem {
+  return (item as EquipmentItem).equipmentStats !== undefined;
+}
+
+function IsChargeGloves(item: EquipmentItem) {
+  return game.itemCharges.itemHasCharge(item) && item.validSlots.includes("Gloves");
 }
