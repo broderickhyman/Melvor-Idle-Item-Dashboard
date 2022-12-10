@@ -428,8 +428,8 @@ class ItemDashboard {
     let rateFactor = 1;
     if (this.options.ItemTracked) {
       // track relative to a specific item's change
-      rateFactor = this.itemTracker.curr.BulkItems[this.options.ItemTracked] -
-        this.itemTracker.start.BulkItems[this.options.ItemTracked]
+      rateFactor = (this.itemTracker.curr.BulkItems[this.options.ItemTracked] || 0) -
+        (this.itemTracker.start.BulkItems[this.options.ItemTracked] || 0);
 
       let itemData = game.items.getObjectByID(this.options.ItemTracked);
       if (itemData) {
@@ -556,10 +556,7 @@ class ItemDashboard {
     }
 
     this.resDiff.RateFactor = rateFactor;
-    // glove charges (todo)
-    if (document.getElementById("dashWealthChange") != null) {
-      $("#dashWealthChange").text(`${this.RoundCustom(this.resDiff.NetWealthRate, 0)}/${this.resDiff.IntervalLabel}`);
-    }
+    $("#miid-wealth-change").text(`${this.RoundCustom(this.resDiff.NetWealthRate, 0)}/${this.resDiff.IntervalLabel}`);
   }
 
   HandleItemClick(itemID: string) {
@@ -570,14 +567,15 @@ class ItemDashboard {
         this.options.BlacklistItems[itemID] = true;
       }
     } else {
-      if (Object.keys(SnapshotOptions).includes(itemID)) {
-        this.options.ItemTracked = "";
-        this.options.PointTracked = itemID as SnapshotOptions;
-      } else {
-        this.options.ItemTracked = itemID;
-        this.options.PointTracked = "";
-      }
+      this.options.ItemTracked = itemID;
+      this.options.PointTracked = "";
     }
+    this.UpdateDashboard();
+  }
+
+  HandlePointClick(pointName: SnapshotOptions) {
+    this.options.ItemTracked = "";
+    this.options.PointTracked = pointName;
     this.UpdateDashboard();
   }
 
@@ -608,7 +606,7 @@ class ItemDashboard {
         // create item row
         if (compact) {
           row = `
-                <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
+                <div class="miid-row-item pointer-enabled" data-miid-item-id="${itemID}">
                     <img width="32" height="32" src="${itemData.media}"></img>
                     <br>
                     <span>
@@ -619,7 +617,7 @@ class ItemDashboard {
         } else {
           row = `
                 <div class="row">
-                    <div class="col-4 pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
+                    <div class="miid-row-item col-4 pointer-enabled" data-miid-item-id="${itemID}">
                         <img class="nav-img" src="${itemData.media}"></img>
                         ${banned ? itemData.name.strike() : itemData.name}
                     </div>
@@ -642,7 +640,7 @@ class ItemDashboard {
           let lossRow = ``;
           if (compact) {
             lossRow = `
-                    <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
+                    <div class="miid-row-item pointer-enabled" data-miid-item-id="${itemID}">
                         <img width="32" height="32" src="${itemData.media}"></img>
                         <span>
                             ${timeString} left
@@ -651,7 +649,7 @@ class ItemDashboard {
                     </div`;
           } else {
             lossRow = `
-                    <div class="row pointer-enabled" onClick="window.dashboard.HandleItemClick('${itemID}')">
+                    <div class="miid-row-item row pointer-enabled" data-miid-item-id="${itemID}">
                         <div class="col-6">
                             <img class="nav-img" src="${itemData.media}"></img>
                             ${this.RoundCustom(this.itemTracker.curr.BulkItems[itemID], 1)}
@@ -904,7 +902,7 @@ class ItemDashboard {
     let pointRow = ``;
     if (compact) {
       pointRow = `
-        <div class="pointer-enabled" onClick="window.dashboard.HandleItemClick('${pointName}')">
+        <div class="miid-row-point pointer-enabled" data-miid-point-name="${pointName}">
             <img width="32" height="32" src="${src}"></img>
             <br>
             <span>${this.RoundCustom(this.resDiff.PointRate[pointName], 1)}</span>
@@ -914,7 +912,7 @@ class ItemDashboard {
       }
     } else {
       pointRow = `
-        <div class="row no-gutters pointer-enabled" onClick="window.dashboard.HandleItemClick('${pointName}')">
+        <div class="miid-row-point row no-gutters pointer-enabled" data-miid-point-name="${pointName}">
             <div class="col-4">
                 <img class="nav-img" src="${src}"></img>
                 ${desc[pointName]}
@@ -947,7 +945,6 @@ class ItemDashboard {
     let compact = $(window).width() as number < 1250;
     let content = this.GetDashContent(compact);
     let buttonLabel = (this.resDiff.IntervalLabel == "reset") ? "Since last" : "Per:";
-    // <button type="button" class="swal2-confirm swal2-styled onClick="window.dashboard.ResetItemTracker()">Reset</button>`
     const $dashContent = $("#dashContent");
     if ($dashContent.length > 0) {
       const $modal = $dashContent.parents(".swal2-popup.swal2-modal");
@@ -959,10 +956,10 @@ class ItemDashboard {
       }
       $dashContent.html(`
         <p>Time tracked: ${this.GetTimeString(this.resDiff.TimePassed)}</p>
-        <button type="button" onClick="window.dashboard.ToggleIntervalSize()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
+        <button id="miid-toggle-interval" type="button" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
             ${buttonLabel} ${this.resDiff.IntervalLabel}
         </button>
-        <button type="button" onClick="window.dashboard.ToggleBlacklist()" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: ${this.options.BlacklistMode ? "rgb(200, 55, 55)" : "rgb(55, 200, 55)"}; border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
+        <button id="miid-toggle-blacklist" type="button" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: ${this.options.BlacklistMode ? "rgb(200, 55, 55)" : "rgb(55, 200, 55)"}; border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
         Blacklisting: ${this.options.BlacklistMode}
         </button>
         ${content}
@@ -971,6 +968,7 @@ class ItemDashboard {
   }
 
   OpenItemDashboard() {
+    const dashboard = this;
     window.Swal.fire({
       title: 'M.I.I.D. (Item Dash)',
       html: `<div><small>Created by Gardens</small></div><div><small>Updated by MyPickle</small></div><div id="dashContent"></div>`,
@@ -978,14 +976,30 @@ class ItemDashboard {
       // openItemDash();
       confirmButtonColor: '#3085d6',
       cancelButtonColor: '#d33',
-      confirmButtonText: 'Reset Tracker'
+      confirmButtonText: 'Reset Tracker',
+
     }).then((result: any) => {
       if (result.value) {
         console.log("Resetting item tracker")
-        window.dashboard.ResetItemTracker();
-        setTimeout(window.dashboard.OpenItemDashboard, 100);
+        dashboard.ResetItemTracker();
+        setTimeout(() => dashboard.OpenItemDashboard(), 100);
       }
-    })
+    });
+    // Hack until templates are used
+    $("#dashContent").on("click", "#miid-toggle-interval", () => {
+      dashboard.ToggleIntervalSize();
+    });
+    $("#dashContent").on("click", "#miid-toggle-blacklist", () => {
+      dashboard.ToggleBlacklist();
+    });
+    $("#dashContent").on("click", ".miid-row-item", function (e) {
+      const itemID = $(this).data("miid-item-id") as string;
+      dashboard.HandleItemClick(itemID);
+    });
+    $("#dashContent").on("click", ".miid-row-point", function (e) {
+      const pointName = $(this).data("miid-point-name") as SnapshotOptions;
+      dashboard.HandlePointClick(pointName);
+    });
   }
 
   LevelToXp(level: number) {
@@ -1009,44 +1023,30 @@ class ItemDashboard {
   }
 }
 
-function InjectItemTrackerButton() {
-  if (document.getElementById("dashWealthChange") == null) {
-    window.dashboard = new ItemDashboard();
+export function InjectItemTrackerButton() {
+  if ($("#miid-wealth-change").length === 0) {
+    const dashboard = new ItemDashboard();
     let dashButton = `
         <li class="nav-main-item">
-        <div class="nav-main-link nav-compact pointer-enabled" onclick="window.dashboard.OpenItemDashboard()">
+        <div id='miid-sidebar-button' class="nav-main-link nav-compact pointer-enabled">
         <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/statistics_header.svg">
         <span class="nav-main-link-name">Item Dash</span>
         <img src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg" style="margin-right: 4px;" width="16px" height="16px">
-        <small id="dashWealthChange" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom"></small>
+        <small id="miid-wealth-change" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom"></small>
         </div>
         </li>`
     $(".nav-main .bank-space-nav").parent().parent().after(dashButton);
+    $("#miid-sidebar-button").on("click", () => {
+      dashboard.OpenItemDashboard();
+    });
     setInterval(() => {
-      window.dashboard.TickTracker();
-      window.dashboard.UpdateDashboard();
+      dashboard.TickTracker();
+      dashboard.UpdateDashboard();
       // HACK for initial ticker:
       // $("#dashItems").html(getDashItemRows())
     }, 1000);
   }
 }
-
-function LoadItemDashboard() {
-  // if ((window.isLoaded && !window.currentlyCatchingUp) ||
-  //     document.getElementById("nav-menu-show") == null ||
-  if (
-    !(confirmedLoaded && characterSelected)
-  ) {
-    // console.log("Retrying...")
-    setTimeout(LoadItemDashboard, 500);
-    return;
-  } else {
-    InjectItemTrackerButton();
-  }
-}
-
-window.LoadItemDashboard = LoadItemDashboard;
-window.InjectItemTrackerButton = InjectItemTrackerButton;
 
 function EnumKeys<O extends object, K extends keyof O = keyof O>(obj: O): K[] {
   return Object.keys(obj).filter(k => Number.isNaN(+k)) as K[];

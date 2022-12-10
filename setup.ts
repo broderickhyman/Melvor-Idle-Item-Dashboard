@@ -1,6 +1,5 @@
-
 export async function setup(ctx: Modding.ModContext) {
-  await ctx.loadScript('dashboard.js');
+  const { InjectItemTrackerButton } = await ctx.loadModule("dashboard.js");
 
   ctx.onInterfaceReady(() => {
     // Code here will only get executed after the game, character, and
