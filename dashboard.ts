@@ -6,6 +6,15 @@ enum SnapshotOptions {
   SlayerCoins = "SlayerCoins",
 }
 
+interface SweetAlertResult {
+  value: boolean;
+}
+
+interface SweetAlertPopup {
+  close: () => void;
+  then(onfulfilled: ((result: SweetAlertResult) => void)): Promise<any>;
+}
+
 class Options {
   public BlacklistItems: { [name: string]: boolean };
   public BlacklistMode: boolean;
@@ -300,25 +309,28 @@ class SkillDiff {
 
 class ItemDashboard {
   ctx: Modding.ModContext;
-  options: Options;
   itemTracker: {
     start: Snapshot;
     curr: Snapshot;
   };
+  options: Options;
+  isPaused: boolean;
   resDiff: ResultDiff;
 
-  public levels: number[];
+  public Levels: number[];
 
   constructor(ctx: Modding.ModContext) {
     this.ctx = ctx;
-    this.levels = [];
+    this.isPaused = false;
+
+    this.Levels = [];
     this.SetupXpLevels();
 
-    this.options = new Options();
     this.itemTracker = {
       start: new Snapshot(this),
       curr: new Snapshot(this),
     };
+    this.options = new Options();
     this.resDiff = new ResultDiff();
 
     this.LoadItemTracker();
@@ -354,6 +366,7 @@ class ItemDashboard {
   }
 
   ResetItemTracker() {
+    console.log("Resetting item tracker");
     this.itemTracker.start = new Snapshot(this);
     this.itemTracker.curr = new Snapshot(this);
     this.TickTracker();
@@ -400,6 +413,10 @@ class ItemDashboard {
   }
 
   TickTracker(silent = true) {
+    if (this.isPaused) {
+      return;
+    }
+
     /**
      * Return the purchase item for gloves if available
      * @param item
@@ -539,7 +556,7 @@ class ItemDashboard {
     // XP
     for (let skillID in this.itemTracker.curr.Skills) {
       this.resDiff.XpChange[skillID] = this.itemTracker.curr.Skills[skillID].Xp - start.Skills[skillID].Xp;
-      this.resDiff.XpRate[skillID] = this.resDiff.XpChange[skillID] / rateFactor
+      this.resDiff.XpRate[skillID] = this.resDiff.XpChange[skillID] / rateFactor;
 
       this.resDiff.PoolPercChange[skillID] = this.itemTracker.curr.Skills[skillID].PoolPercent - start.Skills[skillID].PoolPercent;
       this.resDiff.PoolPercRate[skillID] = this.resDiff.PoolPercChange[skillID] / rateFactor;
@@ -615,7 +632,7 @@ class ItemDashboard {
                 </div`;
         } else {
           row = `
-                <div class="row">
+                <div class="row no-gutters">
                     <div class="miid-row-item col-4 pointer-enabled" data-miid-item-id="${itemID}">
                         <img class="nav-img" src="${itemData.media}"></img>
                         ${banned ? itemData.name.strike() : itemData.name}
@@ -648,7 +665,7 @@ class ItemDashboard {
                     </div`;
           } else {
             lossRow = `
-                    <div class="miid-row-item row pointer-enabled" data-miid-item-id="${itemID}">
+                    <div class="miid-row-item row no-gutters pointer-enabled" data-miid-item-id="${itemID}">
                         <div class="col-6">
                             <img class="nav-img" src="${itemData.media}"></img>
                             ${this.RoundCustom(this.itemTracker.curr.BulkItems[itemID], 1)}
@@ -728,7 +745,7 @@ class ItemDashboard {
     } else {
       // total item changes
       generalContent += `
-        <div class="row">
+        <div class="row no-gutters">
             <div class="col-4">
                 <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/bank_header.svg"></img>
                 General Items
@@ -740,7 +757,7 @@ class ItemDashboard {
             </div>
         </div>`;
       farmingContent += `
-        <div class="row">
+        <div class="row no-gutters">
             <div class="col-4">
                 <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/skills/farming/farming.svg"></img>
                 Farming Items
@@ -805,8 +822,8 @@ class ItemDashboard {
       let hasMastery = skillData.hasMastery;
       let xpRate = this.resDiff.XpRate[skillID];
       let xpChange = this.resDiff.XpChange[skillID];
-      let poolPercRate = this.resDiff.PoolPercRate[skillID]
-      let masteryRate = this.resDiff.MasteryRate[skillID]
+      let poolPercRate = this.resDiff.PoolPercRate[skillID];
+      let masteryRate = this.resDiff.MasteryRate[skillID];
       let xpToNext = currentSkill.XpToNext;
       let timeToLevel = xpToNext / (xpChange / this.resDiff.TimePassed);
       let poolChange = this.resDiff.PoolChange[skillID];
@@ -814,15 +831,17 @@ class ItemDashboard {
       if (poolChange) {
         until100 = ((currentSkill.PoolMax - currentSkill.Pool) / (poolChange / this.resDiff.TimePassed));
       }
+      const underLevelCap = skillData.virtualLevel < skillData.levelCap;
+      const hasPoolChange = hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100 && poolPercRate !== 0;
 
-      if (xpChange == 0) {
+      if (xpChange == 0 || (!underLevelCap && !hasPoolChange)) {
         continue;
       } else {
         this.resDiff.SkillChanges = true;
       }
       if (compact) {
 
-        if (skillData.virtualLevel < skillData.levelCap) {
+        if (underLevelCap) {
           xpRow = `
                 <div>
                     <img width="32" height="32" src="${skillData.media}"></img>
@@ -832,7 +851,7 @@ class ItemDashboard {
                     <br>
                 </div`;
         }
-        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100 && poolPercRate !== 0) {
+        if (hasPoolChange) {
           xpRow += `
                 <div>
                     <img width="32" height="32" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
@@ -843,9 +862,9 @@ class ItemDashboard {
                 </div`;
         }
       } else {
-        if (skillData.virtualLevel < skillData.levelCap) {
+        if (underLevelCap) {
           xpRow = `
-                <div class="row">
+                <div class="row no-gutters">
                     <div class="col-4">
                         <img class="nav-img" src="${skillData.media}"></img>
                         ${skillName}
@@ -859,15 +878,15 @@ class ItemDashboard {
 
                 </div>`;
         }
-        if (hasMastery && this.itemTracker.curr.Skills[skillID].PoolPercent < 100 && poolPercRate !== 0) {
+        if (hasPoolChange) {
           xpRow += `
-                    <div class="row">
+                    <div class="row no-gutters">
                     <div class="col-4">
                     <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/mastery_header.svg"></img>
                     ${skillName}
                     </div>
                     <div class="col-4">
-                    ${this.RoundCustom(poolPercRate, 3)}%
+                    ${this.RoundCustom(poolPercRate * 100, 3)}%
                     </div>
                     <div class="col-4">
                     to 100%: ${this.GetTimeString(until100)}
@@ -941,20 +960,27 @@ class ItemDashboard {
   }
 
   UpdateDashboard() {
+    if (this.isPaused) {
+      return;
+    }
+
     let compact = this.GetWindowCompact();
     let content = this.GetDashContent(compact);
     let buttonLabel = (this.resDiff.IntervalLabel == "reset") ? "Since last" : "Per:";
     const $dashContent = $("#dashContent");
     if ($dashContent.length > 0) {
       const $modal = $dashContent.parents(".swal2-popup.swal2-modal");
-        $modal.css("width", this.GetWindowWidthPercent(compact));
+      $modal.css("width", this.GetWindowWidthPercent(compact));
       $dashContent.html(`
-        <p>Time tracked: ${this.GetTimeString(this.resDiff.TimePassed)}</p>
+        <div style="padding-bottom: 0.5em;">Time tracked: ${this.GetTimeString(this.resDiff.TimePassed)}</div>
         <button id="miid-toggle-interval" type="button" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
-            ${buttonLabel} ${this.resDiff.IntervalLabel}
+          ${buttonLabel} ${this.resDiff.IntervalLabel}
         </button>
         <button id="miid-toggle-blacklist" type="button" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: ${this.options.BlacklistMode ? "rgb(200, 55, 55)" : "rgb(55, 200, 55)"}; border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
-        Blacklisting: ${this.options.BlacklistMode}
+          Blacklisting: ${this.options.BlacklistMode}
+        </button>
+        <button id="miid-reset-tracker" type="button" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: #e56767; border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
+          Reset Tracker
         </button>
         ${content}
         `);
@@ -971,27 +997,22 @@ class ItemDashboard {
 
   OpenItemDashboard() {
     const dashboard = this;
-    window.Swal.fire({
-      title: 'M.I.I.D. (Item Dash)',
-      html: `<div><small>Created by Gardens</small></div><div><small>Updated by MyPickle</small></div><div id="dashContent"></div>`,
-      width: dashboard.GetWindowWidthPercent(dashboard.GetWindowCompact()),
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-      confirmButtonText: 'Reset Tracker',
 
-    }).then((result: any) => {
-      if (result.value) {
-        console.log("Resetting item tracker")
-        dashboard.ResetItemTracker();
-        setTimeout(() => dashboard.OpenItemDashboard(), 100);
-      }
-    });
+    window.Swal.fire({
+      html: `<div><small>Created by Gardens</small></div><div><small>Updated by MyPickle</small></div><div id="dashContent"></div>`,
+      showCloseButton: true,
+      title: 'M.I.I.D. (Item Dashboard)',
+      width: dashboard.GetWindowWidthPercent(dashboard.GetWindowCompact()),
+    }) as SweetAlertPopup;
     // Hack until templates are used
     $("#dashContent").on("click", "#miid-toggle-interval", () => {
       dashboard.ToggleIntervalSize();
     });
     $("#dashContent").on("click", "#miid-toggle-blacklist", () => {
       dashboard.ToggleBlacklist();
+    });
+    $("#dashContent").on("click", "#miid-reset-tracker", () => {
+      dashboard.ResetItemTracker();
     });
     $("#dashContent").on("click", ".miid-row-item", function (e) {
       const itemID = $(this).data("miid-item-id") as string;
@@ -1013,13 +1034,13 @@ class ItemDashboard {
 
   SetupXpLevels() {
     for (let i = 0; i < 200; i++) {
-      this.levels[i] = this.LevelToXp(i)
+      this.Levels[i] = this.LevelToXp(i)
     }
   }
 
   XpToLevel(xp: number) {
     let level = 1;
-    while (this.levels[level + 1] <= xp) level++;
+    while (this.Levels[level + 1] <= xp) level++;
     return level;
   }
 }
@@ -1041,6 +1062,9 @@ export function Initialize(ctx: Modding.ModContext) {
 </small>`);
     }
   });
+  // Put a reference to the dashboard on the button so developers can access it from the console
+  // To pause updates: $(".miid-sidebar-button").data("dashboard").isPaused = true
+  $(".miid-sidebar-button").data("dashboard", dashboard);
   setInterval(() => {
     dashboard.TickTracker();
     dashboard.UpdateDashboard();
