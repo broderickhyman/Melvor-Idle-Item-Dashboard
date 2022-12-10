@@ -1,9 +1,3 @@
-interface Window {
-  dashboard: ItemDashboard;
-  LoadItemDashboard: () => void;
-  InjectItemTrackerButton: () => void;
-}
-
 enum SnapshotOptions {
   Gold = "Gold",
   Health = "Health",
@@ -305,6 +299,7 @@ class SkillDiff {
 }
 
 class ItemDashboard {
+  ctx: Modding.ModContext;
   options: Options;
   itemTracker: {
     start: Snapshot;
@@ -314,7 +309,8 @@ class ItemDashboard {
 
   public levels: number[];
 
-  constructor() {
+  constructor(ctx: Modding.ModContext) {
+    this.ctx = ctx;
     this.levels = [];
     this.SetupXpLevels();
 
@@ -556,7 +552,10 @@ class ItemDashboard {
     }
 
     this.resDiff.RateFactor = rateFactor;
-    $("#miid-wealth-change").text(`${this.RoundCustom(this.resDiff.NetWealthRate, 0)}/${this.resDiff.IntervalLabel}`);
+    const shortDisplay = `${this.RoundCustom(this.resDiff.NetWealthRate, 0)}/${this.resDiff.IntervalLabel}`;
+    const longDisplay = `${Math.round(this.resDiff.NetWealthRate)}/${this.resDiff.IntervalLabel}`;
+    $("#miid-wealth-change").text(shortDisplay);
+    $("#miid-wealth-change").attr("data-original-title", longDisplay);
   }
 
   HandleItemClick(itemID: string) {
@@ -942,18 +941,13 @@ class ItemDashboard {
   }
 
   UpdateDashboard() {
-    let compact = $(window).width() as number < 1250;
+    let compact = this.GetWindowCompact();
     let content = this.GetDashContent(compact);
     let buttonLabel = (this.resDiff.IntervalLabel == "reset") ? "Since last" : "Per:";
     const $dashContent = $("#dashContent");
     if ($dashContent.length > 0) {
       const $modal = $dashContent.parents(".swal2-popup.swal2-modal");
-      if (compact) {
-        $modal.css("width", "90%");
-      }
-      else {
-        $modal.css("width", "50%");
-      }
+        $modal.css("width", this.GetWindowWidthPercent(compact));
       $dashContent.html(`
         <p>Time tracked: ${this.GetTimeString(this.resDiff.TimePassed)}</p>
         <button id="miid-toggle-interval" type="button" class="swal2-confirm swal2-styled" aria-label="" style="display: inline-block; background-color: rgb(55, 200, 55); border-left-color: rgb(48, 133, 214); border-right-color: rgb(48, 133, 214);">
@@ -967,13 +961,20 @@ class ItemDashboard {
     }
   }
 
+  GetWindowCompact(): boolean {
+    return $(window).width() as number < 800;
+  }
+
+  GetWindowWidthPercent(compact: boolean): string {
+    return compact ? "90%" : "75%";
+  }
+
   OpenItemDashboard() {
     const dashboard = this;
     window.Swal.fire({
       title: 'M.I.I.D. (Item Dash)',
       html: `<div><small>Created by Gardens</small></div><div><small>Updated by MyPickle</small></div><div id="dashContent"></div>`,
-      width: "50%",
-      // openItemDash();
+      width: dashboard.GetWindowWidthPercent(dashboard.GetWindowCompact()),
       confirmButtonColor: '#3085d6',
       cancelButtonColor: '#d33',
       confirmButtonText: 'Reset Tracker',
@@ -1023,29 +1024,27 @@ class ItemDashboard {
   }
 }
 
-export function InjectItemTrackerButton() {
-  if ($("#miid-wealth-change").length === 0) {
-    const dashboard = new ItemDashboard();
-    let dashButton = `
-        <li class="nav-main-item">
-        <div id='miid-sidebar-button' class="nav-main-link nav-compact pointer-enabled">
-        <img class="nav-img" src="https://cdn.melvor.net/core/v018/assets/media/main/statistics_header.svg">
-        <span class="nav-main-link-name">Item Dash</span>
-        <img src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg" style="margin-right: 4px;" width="16px" height="16px">
-        <small id="miid-wealth-change" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom"></small>
-        </div>
-        </li>`
-    $(".nav-main .bank-space-nav").parent().parent().after(dashButton);
-    $("#miid-sidebar-button").on("click", () => {
-      dashboard.OpenItemDashboard();
-    });
-    setInterval(() => {
-      dashboard.TickTracker();
-      dashboard.UpdateDashboard();
-      // HACK for initial ticker:
-      // $("#dashItems").html(getDashItemRows())
-    }, 1000);
-  }
+export function Initialize(ctx: Modding.ModContext) {
+  const dashboard = new ItemDashboard(ctx);
+  sidebar.category("").item("Item Dash", {
+    icon: "https://cdn.melvor.net/core/v018/assets/media/main/statistics_header.svg",
+    itemClass: "miid-sidebar-button",
+    onClick: () => dashboard.OpenItemDashboard(),
+    onRender: (elements) => {
+      const nameElement = $(elements.nameEl);
+      nameElement.after(`
+<small>
+  <span>
+    <img src="https://cdn.melvor.net/core/v018/assets/media/main/coins.svg" style="margin-right: 4px;" width="16px" height="16px" />
+      <span id="miid-wealth-change" class="text-warning" data-toggle="tooltip" data-html="true" data-placement="bottom" data-original-title=""></span>
+  </span>
+</small>`);
+    }
+  });
+  setInterval(() => {
+    dashboard.TickTracker();
+    dashboard.UpdateDashboard();
+  }, 1000);
 }
 
 function EnumKeys<O extends object, K extends keyof O = keyof O>(obj: O): K[] {
